@@ -107,6 +107,14 @@ export default async function DairePage({
           </p>
         )}
 
+        {!process.env.NEXT_PUBLIC_SITE_URL && (
+          <p className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+            <strong>NEXT_PUBLIC_SITE_URL</strong> ayarlanmamış. Mesajdaki dekont
+            bağlantısı eksik gider ve kiracı dosya yükleyemez. Ortam
+            değişkenlerine sitenin tam adresini ekleyin.
+          </p>
+        )}
+
         <FaturaPaneli
           unitId={daire.id}
           donem={donem}
