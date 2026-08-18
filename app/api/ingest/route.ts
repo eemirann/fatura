@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/supabase/admin";
 import { getUser } from "@/lib/supabase/server";
-import { dekontOku, mimeDesteklenirMi, type DesteklenenMime } from "@/lib/dekont-oku";
-import { eslestir } from "@/lib/esles";
+import {
+  dekontOku,
+  mimeDesteklenirMi,
+  type DekontOkuma,
+  type DesteklenenMime,
+} from "@/lib/dekont-oku.ts";
+import { eslestir, type EslesmeSonucu } from "@/lib/esles.ts";
 import type { ReceiptKaynak } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -116,31 +121,25 @@ export async function POST(request: Request) {
   // Okuma başarısız olsa bile dekont kaydedilir; dosya kaybolmasın, ev sahibi
   // açıp elle bakabilsin.
   const beklenenTutar = Number(fatura.toplam);
-  let okuma = null;
-  let sonuc = {
-    eslesme: "unreadable" as const,
-    yeniDurum: null as null,
-    aciklama: "Dekont okunamadı.",
-  };
 
+  let okuma: DekontOkuma | null = null;
   try {
     okuma = await dekontOku(icerik, mime);
   } catch (e) {
-    const mesaj = e instanceof Error ? e.message : String(e);
-    console.error("[ingest] dekont okunamadı:", mesaj);
-    sonuc = {
-      ...sonuc,
+    console.error("[ingest] dekont okunamadı:", e instanceof Error ? e.message : e);
+  }
+
+  let eslesmeSonucu: EslesmeSonucu;
+  if (okuma) {
+    const { data: ayarlar } = await admin.from("settings").select("iban").single();
+    eslesmeSonucu = eslestir(okuma, beklenenTutar, ayarlar?.iban ?? "");
+  } else {
+    eslesmeSonucu = {
+      eslesme: "unreadable",
+      yeniDurum: null,
       aciklama: "Otomatik okuma başarısız oldu. Dekontu açıp elle kontrol edin.",
     };
   }
-
-  const ayarlar = okuma
-    ? await admin.from("settings").select("iban").single()
-    : null;
-
-  const eslesmeSonucu = okuma
-    ? eslestir(okuma, beklenenTutar, ayarlar?.data?.iban ?? "")
-    : sonuc;
 
   // ---------------------------------------------------------------- kaydet
   const { error: kayitHatasi } = await admin.from("receipts").insert({
