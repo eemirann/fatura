@@ -1,4 +1,4 @@
-import { getServerSupabase } from "./supabase/server";
+import { getServerSupabase } from "./supabase/server.ts";
 import type {
   Block,
   Invoice,
@@ -6,7 +6,7 @@ import type {
   Receipt,
   Settings,
   Unit,
-} from "./types";
+} from "./types.ts";
 
 export type DaireKarti = Unit & {
   invoice: (Invoice & { items: InvoiceItem[] }) | null;

@@ -1,5 +1,5 @@
-import type { InvoiceItem } from "./types";
-import { donemEtiketi, para, tarihTR, waTelefon } from "./format";
+import type { InvoiceItem } from "./types.ts";
+import { donemEtiketi, para, tarihTR, waTelefon } from "./format.ts";
 
 export type MesajGirdisi = {
   sablon: string;

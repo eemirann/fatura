@@ -1,5 +1,5 @@
-import type { Invoice } from "./types";
-import { isoGun } from "./format";
+import type { Invoice } from "./types.ts";
+import { isoGun } from "./format.ts";
 
 /**
  * Panelde bir dairenin görünen durumu.
