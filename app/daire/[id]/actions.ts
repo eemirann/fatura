@@ -58,10 +58,26 @@ export async function faturaKaydet(
     .single();
 
   const girilenVade = String(fd.get("son_odeme_tarihi") ?? "").trim();
-  const vade =
-    /^\d{4}-\d{2}-\d{2}$/.test(girilenVade)
-      ? girilenVade
-      : sonOdemeTarihi(donem, ayarlar?.varsayilan_son_odeme_gunu ?? 10);
+  const girilenGecerli = /^\d{4}-\d{2}-\d{2}$/.test(girilenVade);
+  const vade = girilenGecerli
+    ? girilenVade
+    : sonOdemeTarihi(donem, ayarlar?.varsayilan_son_odeme_gunu ?? 10);
+
+  // Elle girilen bir tarih, ayın diğer günden farklı bir gününü işaret
+  // ediyorsa bunu varsayılan yap — başka bir daireye girildiğinde de aynı
+  // gün önerilsin diye. Sadece kullanıcı gerçekten bir tarih değiştirdiyse
+  // (fallback'e düşülmediyse) devreye girer.
+  if (girilenGecerli) {
+    // settings.varsayilan_son_odeme_gunu 1-28 ile sınırlı (bkz. migration) —
+    // ayın son günlerine denk gelen tarihler varsayılan olarak kaydedilmez.
+    const girilenGun = Math.min(28, Number(girilenVade.split("-")[2]));
+    if (girilenGun !== ayarlar?.varsayilan_son_odeme_gunu) {
+      await supabase
+        .from("settings")
+        .update({ varsayilan_son_odeme_gunu: girilenGun })
+        .eq("id", true);
+    }
+  }
 
   const { data: fatura, error: faturaHatasi } = await supabase
     .from("invoices")
