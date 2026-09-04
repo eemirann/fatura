@@ -33,7 +33,8 @@ Son ödeme tarihi: {son_odeme_tarihi}
 IBAN: {iban}
 Ad Soyad: {hesap_sahibi}
 
-Ödemenizin ardından dekontu şu adresten yükleyebilirsiniz:
+Ödemenizin ardından dekontu bu sohbete fotoğraf veya PDF olarak
+gönderebilir, ya da şu adresten yükleyebilirsiniz:
 {dekont_linki}
 
 Teşekkürler.',

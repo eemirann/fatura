@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { sonOdemeTarihi } from "@/lib/format";
+import { wahaAktifMi, wahaMesajGonder } from "@/lib/waha";
 
 export type ActionSonuc = { hata?: string; basari?: string };
 
@@ -92,13 +93,29 @@ export async function faturaKaydet(
   return { basari: "Fatura kaydedildi." };
 }
 
-/** WhatsApp'a basıldığında çağrılır: daire sarıya döner. */
+/**
+ * WhatsApp'a basıldığında çağrılır.
+ *
+ * WAHA yapılandırılmışsa mesaj burada, sunucu tarafında otomatik gönderilir —
+ * kullanıcı hiçbir şeye elle basmaz. Gönderim başarısız olursa fatura
+ * "gönderildi" işaretlenmez, hata kullanıcıya gösterilir.
+ *
+ * WAHA yoksa (WAHA_URL boş) eski davranış aynen çalışır: buton zaten wa.me
+ * linkini açmıştır, bu action sadece durumu günceller.
+ */
 export async function gonderildiIsaretle(
   _prev: ActionSonuc,
   fd: FormData,
 ): Promise<ActionSonuc> {
   const faturaId = String(fd.get("fatura_id") ?? "");
   const unitId = String(fd.get("unit_id") ?? "");
+
+  if (wahaAktifMi()) {
+    const telefon = String(fd.get("telefon") ?? "");
+    const mesaj = String(fd.get("mesaj") ?? "");
+    const sonuc = await wahaMesajGonder(telefon, mesaj);
+    if (!sonuc.basari) return { hata: `WhatsApp mesajı gönderilemedi: ${sonuc.hata}` };
+  }
 
   const supabase = await getServerSupabase();
   const { error } = await supabase

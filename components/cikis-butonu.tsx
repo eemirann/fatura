@@ -15,7 +15,7 @@ export default function CikisButonu() {
   return (
     <button
       onClick={cik}
-      className="rounded-lg px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+      className="rounded-lg px-3 py-2.5 sm:py-1.5 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-900"
     >
       Çıkış
     </button>

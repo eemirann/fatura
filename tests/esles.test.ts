@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { eslestir } from "../lib/esles.ts";
-import type { DekontOkuma } from "../lib/dekont-oku.ts";
+import { eslestir, toplananTutar } from "../lib/esles.ts";
+import type { DekontOkuma } from "../lib/dekont-servis.ts";
 
 const IBAN = "TR330006100519786457841326";
 
@@ -36,11 +36,25 @@ test("iki kuruşluk fark uyuşmazlık sayılır", () => {
   assert.equal(s.yeniDurum, "uyusmadi");
 });
 
-test("eksik ödeme uyuşmazlıktır, ödendi olmaz", () => {
+test("eksik ödeme kısmi sayılır, fatura durumu değişmez", () => {
   const s = eslestir(okuma({ tutar: 1000 }), 1650, IBAN);
+  assert.equal(s.eslesme, "kismi");
+  assert.equal(s.yeniDurum, null);
+  assert.match(s.aciklama, /650\.00/);
+});
+
+test("kısmi ödemeler toplanıp tam tutara ulaşınca ödendi olur", () => {
+  // İlk 1000 TL zaten alınmış (oncekiOdenenTutar), şimdi kalan 650 TL geliyor.
+  const s = eslestir(okuma({ tutar: 650 }), 1650, IBAN, 1000);
+  assert.equal(s.eslesme, "matched");
+  assert.equal(s.yeniDurum, "odendi");
+  assert.match(s.aciklama, /1650\.00/);
+});
+
+test("kısmi ödeme sonrası fazla gelen tutar yine uyuşmazlıktır", () => {
+  const s = eslestir(okuma({ tutar: 700 }), 1650, IBAN, 1000);
   assert.equal(s.eslesme, "mismatch");
   assert.equal(s.yeniDurum, "uyusmadi");
-  assert.match(s.aciklama, /650\.00/);
 });
 
 test("okunamayan dekont faturanın durumunu değiştirmez", () => {
@@ -90,4 +104,14 @@ test("ayarlarda IBAN yoksa uyarı üretilmez", () => {
   const s = eslestir(okuma({ alici_iban: "TR99" }), 1650, "");
   assert.equal(s.eslesme, "matched");
   assert.doesNotMatch(s.aciklama, /IBAN/);
+});
+
+test("toplananTutar yalnızca matched ve kismi dekontları sayar", () => {
+  const toplam = toplananTutar([
+    { eslesme: "matched", okunan_tutar: 500 },
+    { eslesme: "kismi", okunan_tutar: 300 },
+    { eslesme: "mismatch", okunan_tutar: 999 },
+    { eslesme: "unreadable", okunan_tutar: null },
+  ]);
+  assert.equal(toplam, 800);
 });

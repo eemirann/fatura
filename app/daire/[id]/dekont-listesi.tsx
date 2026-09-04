@@ -35,6 +35,10 @@ const ESLESME_STIL: Record<ReceiptEslesme, { etiket: string; sinif: string }> = 
     etiket: "Tutar eşleşti",
     sinif: "border-emerald-300 bg-emerald-50 text-emerald-800",
   },
+  kismi: {
+    etiket: "Kısmi ödeme",
+    sinif: "border-amber-300 bg-amber-50 text-amber-800",
+  },
   mismatch: {
     etiket: "Tutar uyuşmadı",
     sinif: "border-orange-300 bg-orange-50 text-orange-800",
@@ -49,14 +53,17 @@ export default function DekontListesi({
   unitId,
   faturaId,
   beklenenTutar,
+  toplananTutar,
   dekontlar,
 }: {
   unitId: string;
   faturaId: string;
   beklenenTutar: number;
+  toplananTutar: number;
   dekontlar: DekontGorunum[];
 }) {
   const [incelendiDurum, incelendiAction] = useActionState(incelendiIsaretle, BOS);
+  const kismiOdemeVar = toplananTutar > 0 && toplananTutar < beklenenTutar - 0.01;
 
   return (
     <section className="mt-4 rounded-xl border border-slate-200 bg-white">
@@ -76,13 +83,21 @@ export default function DekontListesi({
             <input type="hidden" name="unit_id" value={unitId} />
             <button
               type="submit"
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+              className="rounded-lg border border-slate-300 px-3 py-2.5 sm:py-1.5 text-sm hover:bg-slate-50"
             >
               İnceledim, rozeti kaldır
             </button>
           </form>
         )}
       </div>
+
+      {kismiOdemeVar && (
+        <p className="border-b border-slate-100 bg-amber-50 px-4 py-2 text-sm text-amber-900">
+          Toplanan: <strong>{para(toplananTutar)}</strong> / {para(beklenenTutar)} — kalan{" "}
+          <strong>{para(beklenenTutar - toplananTutar)}</strong>. Muhtemelen daire birden
+          fazla kişi tarafından paylaşılıp ayrı ayrı ödeniyor.
+        </p>
+      )}
 
       {incelendiDurum.hata && (
         <p className="border-b border-slate-100 bg-red-50 px-4 py-2 text-sm text-red-700">
@@ -116,8 +131,6 @@ function DekontSatiri({
   beklenenTutar: number;
 }) {
   const stil = ESLESME_STIL[dekont.eslesme];
-  const fark =
-    dekont.okunan_tutar === null ? null : dekont.okunan_tutar - beklenenTutar;
 
   return (
     <li className="p-4">
@@ -157,10 +170,15 @@ function DekontSatiri({
         </dl>
       )}
 
-      {fark !== null && Math.abs(fark) > 0.01 && (
-        <p className="mt-2 rounded-lg bg-orange-50 px-3 py-2 text-sm text-orange-900">
-          Aradaki fark: <strong>{para(Math.abs(fark))}</strong>{" "}
-          {fark > 0 ? "fazla ödenmiş" : "eksik ödenmiş"} görünüyor.
+      {(dekont.eslesme === "mismatch" || dekont.eslesme === "kismi") && dekont.aciklama && (
+        <p
+          className={`mt-2 rounded-lg px-3 py-2 text-sm ${
+            dekont.eslesme === "mismatch"
+              ? "bg-orange-50 text-orange-900"
+              : "bg-amber-50 text-amber-900"
+          }`}
+        >
+          {dekont.aciklama}
         </p>
       )}
     </li>

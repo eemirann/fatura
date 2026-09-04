@@ -4,7 +4,7 @@ Kiracılara aylık su/elektrik faturasını WhatsApp'tan gönderip dekontların�
 etmek için yapılmış panel.
 
 **Akış:** Daireye tıkla → kalemleri gir → tek tıkla WhatsApp'a düş (daire sarı) →
-kiracı mesajdaki linkten dekontunu yükler → Claude dekonttaki tutarı okur →
+kiracı mesajdaki linkten dekontunu yükler → servis dekonttaki tutarı okur →
 senin girdiğin tutarla eşleşirse daire yeşile döner.
 
 ## Panel renkleri
@@ -45,10 +45,29 @@ gir, *Auto Confirm User* seçeneğini işaretle. Panele bu bilgilerle gireceksin
 > `service_role` anahtarı tüm güvenlik kurallarını baypas eder. Yalnızca sunucuda
 > kullanılıyor, tarayıcıya asla gönderilmiyor. Kimseyle paylaşma.
 
-### 2. Claude API anahtarı
+### 2. Dekont okuma servisi (Python)
 
-[console.anthropic.com](https://console.anthropic.com) → **API Keys** → yeni anahtar
-oluştur → `ANTHROPIC_API_KEY`.
+Dekont okuma, AI kullanmadan (regex + OCR) ayrı bir FastAPI mikroservisinde
+çalışır — metni seçilebilir PDF'lerde doğrudan metinden, ekran görüntüsü/
+taranmış PDF'lerde Tesseract OCR ile okur:
+
+```bash
+cd python-dekont-servisi
+python -m venv .venv
+.venv\Scripts\activate        # Windows (Linux/Mac: source .venv/bin/activate)
+pip install -r requirements.txt
+uvicorn main:app --port 8000
+```
+
+**Tesseract OCR kurulumu** (ekran görüntüsü/taranmış PDF okumak için gerekli;
+kurulu değilse servis çökmez, sadece bu dosyalar "elle kontrol edin"e düşer):
+- Windows: [UB-Mannheim Tesseract installer](https://github.com/UB-Mannheim/tesseract/wiki) —
+  kurulumda **Turkish** dil paketini işaretle, `tesseract.exe`'nin PATH'e
+  eklendiğinden emin ol.
+- Linux (VPS): `apt install tesseract-ocr tesseract-ocr-tur`
+
+Servis isteğe bağlı `DEKONT_SERVICE_KEY` ile korunur — tanımlıysa Next.js tarafı
+aynı değeri `X-Service-Key` başlığında göndermek zorundadır.
 
 ### 3. Ortam değişkenleri
 
@@ -97,11 +116,13 @@ seçici ve kamera akışı çalışıyor mu diye.
 |---|---|
 | Supabase | Ücretsiz katman bu ölçekte fazlasıyla yeter |
 | Vercel | Ücretsiz katman yeter |
-| Claude (dekont okuma) | Dekont başına ~1 ₺ · ayda 20 dekont ≈ 20 ₺ |
+| Dekont okuma (regex + Tesseract OCR) | 0 ₺ — AI/API çağrısı yok |
 
-Daha ucuza çekmek istersen `lib/dekont-oku.ts` içindeki `model` satırını
-`claude-haiku-4-5` yapman yeterli (~5 kat ucuz), ama Türk banka dekontlarında
-okuma isabeti düşer.
+Dekont okuma AI kullanmadığı için isabeti Claude kadar yüksek olmayabilir,
+özellikle bilinmeyen/alışılmadık banka formatlarında. Uygulama bunu baştan
+beri ana güvenlik ağı olarak tasarlamış: okuma başarısız ya da şüpheliyse
+fatura durumu değişmez, panelde "elle kontrol edin" uyarısı çıkar — dosya
+hiçbir zaman kaybolmaz, siz elle bakıp onaylarsınız.
 
 ---
 
@@ -121,11 +142,14 @@ npm test           # eşleştirme ve renk kurallarının birim testleri
 ```
 lib/durum.ts        Panel renk kuralı — TEK kaynak, renk değişikliği burada yapılır
 lib/esles.ts        Dekont tutarı ↔ fatura tutarı eşleştirme kuralı (saf fonksiyon)
-lib/dekont-oku.ts   Claude çağrısı (PDF + görsel)
+lib/dekont-servis.ts   Dekont okuma servisine HTTP çağrısı (PDF + görsel)
+python-dekont-servisi/ FastAPI mikroservisi — regex + OCR ile dekont okuma
 lib/whatsapp.ts     Mesaj şablonu doldurma ve wa.me linki
+lib/waha.ts         WAHA istemcisi — otomatik mesaj gönderimi, gelen medya indirme
 lib/veri.ts         Panel ve daire detayı sorguları
 app/api/ingest/     Dekont giriş noktası — kiracı linki, panel ve otomasyon
-app/y/[token]/      Kiracının gördüğü sayfa (oturum gerektirmez)
+app/api/whatsapp-webhook/  WAHA'dan gelen dekontu /api/ingest'e yönlendirir
+app/y/[token]/      Kiracının gördüğü sayfa (oturum gerektirmez), WAHA kapalıyken yedek
 supabase/migrations/0001_init.sql
 ```
 
@@ -141,23 +165,58 @@ supabase/migrations/0001_init.sql
 
 ---
 
-## Sonradan: n8n ile tam otomasyon
+## WhatsApp otomasyonu (WAHA)
 
-Şu an dekont ya kiracının linkinden ya da senin panelden yüklemenle geliyor.
-İleride WhatsApp'a gelen dekontu otomatik yakalatmak istersen `/api/ingest` uç
-noktası buna hazır — panel kodunu değiştirmen gerekmez:
+`WAHA_URL` ayarlanırsa panel tam otomatik çalışır: fatura mesajı elle
+tıklanmadan gider, kiracının sohbete attığı dekont fotoğrafı/PDF'i otomatik
+yakalanıp okunur. `WAHA_URL` boşsa panel eskisi gibi manuel `wa.me` akışıyla
+çalışmaya devam eder — otomasyon tamamen opsiyoneldir.
+
+WAHA, WhatsApp Web protokolünü kullanan **resmi olmayan** bir köprüdür (WAHA
+Cloud API değildir). Bu yüzden hesap askıya alınma riski taşır; her müşteri
+kendi WhatsApp Business numarasıyla ayrı bir WAHA örneği çalıştırmalı, tek bir
+sunucuda birden fazla müşteri numarasını toplamak riski büyütür.
+
+**Kurulum (VPS'te, her müşteri için ayrı):**
+
+```bash
+export WAHA_API_KEY=$(openssl rand -hex 16)
+export WAHA_DASHBOARD_USERNAME=admin
+export WAHA_DASHBOARD_PASSWORD=$(openssl rand -hex 16)
+docker compose -f docker-compose.waha.yml up -d
+```
+
+`http://<sunucu>:3001/dashboard/` üzerinden `default` oturumunu başlatıp QR'ı
+müşterinin WhatsApp Business'ından taratın. Oturum verisi `waha_data`
+volume'ünde kalıcıdır — container yeniden başlasa da QR'ı tekrar taratmak
+gerekmez.
+
+Sonra Next.js ortamına (Vercel'de Environment Variables):
 
 ```
-POST /api/ingest
-Header: X-Ingest-Key: <INGEST_API_KEY ile aynı değer>
-Body (multipart/form-data):
-  token veya invoice_id
-  file
+WAHA_URL=http://<sunucu>:3001
+WAHA_API_KEY=<yukarıdaki değer>
+WAHA_SESSION=default
+WAHA_WEBHOOK_SECRET=<kendi ürettiğiniz rastgele bir değer>
 ```
 
-n8n'in WhatsApp'a bağlanması ayrı bir konu: kendi numaranı kullanmak için WAHA
-gibi bir köprü (7/24 sunucu + hesap askıya alınma riski) ya da resmi WhatsApp
-Business Cloud API (ayrı numara gerekir) kurman gerekir.
+Son olarak WAHA session ayarına webhook'u ekleyin (`X-Api-Key` başlığıyla):
+
+```bash
+curl -X PUT http://<sunucu>:3001/api/sessions/default \
+  -H "X-Api-Key: $WAHA_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"config":{"webhooks":[{"url":"https://<vercel-adresiniz>/api/whatsapp-webhook","events":["message"],"customHeaders":[{"name":"X-Webhook-Secret","value":"<WAHA_WEBHOOK_SECRET ile aynı değer>"}]}]}}'
+```
+
+**Nasıl işliyor:**
+- Giden: `lib/waha.ts` → `wahaMesajGonder`, panelden "gönder" butonuna
+  basıldığında sunucudan otomatik gider (`app/daire/[id]/actions.ts`).
+- Gelen: `app/api/whatsapp-webhook/route.ts` — gönderenin numarasını daireyle
+  eşleştirir, o daire için bekleyen faturayı bulur, medyayı WAHA'dan indirip
+  mevcut `/api/ingest` uç noktasına (n8n için de hazırlanmış aynı sözleşmeyle,
+  `X-Ingest-Key` ile) iletir. Okuma/eşleştirme mantığı değişmeden çalışır.
+- Kendi gönderdiğiniz mesajlar (`fromMe: true`) ve medyasız mesajlar webhook'ta
+  sessizce atlanır.
 
 ---
 
@@ -167,6 +226,8 @@ Business Cloud API (ayrı numara gerekir) kurman gerekir.
 - Kiracı sayfası `/y/<token>` oturum istemez — yetki token'ın kendisidir. Token
   fatura başına üretilen bir UUID'dir ve o faturadan başka hiçbir veri göstermez.
 - Dekont bucket'ı private; dosyalar yalnızca 30 dakikalık imzalı adresle açılır.
-- `ANTHROPIC_API_KEY` ve `SUPABASE_SERVICE_ROLE_KEY` yalnızca sunucuda kullanılır.
+- `SUPABASE_SERVICE_ROLE_KEY` yalnızca sunucuda kullanılır.
+- Dekont okuma servisi `DEKONT_SERVICE_KEY` ile korunur; Next.js dışından
+  çağrılacaksa anahtar zorunlu tutulmalıdır.
 - Bir faturaya en fazla 15 dekont yüklenebilir (açık uçlu linkin kötüye
   kullanılmasına karşı).

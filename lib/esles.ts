@@ -1,4 +1,4 @@
-import type { DekontOkuma } from "./dekont-oku.ts";
+import type { DekontOkuma } from "./dekont-servis.ts";
 import type { InvoiceDurum, ReceiptEslesme } from "./types.ts";
 
 export type EslesmeSonucu = {
@@ -10,7 +10,22 @@ export type EslesmeSonucu = {
 };
 
 /** Kuruş yuvarlamalarını tolere etmek için. */
-const TOLERANS = 0.01;
+export const TOLERANS = 0.01;
+
+/**
+ * Bir faturaya bugüne kadar "matched" ya da "kismi" sayılmış dekontların
+ * toplamı — `eslestir()`'e `oncekiOdenenTutar` olarak geçirilir. Hem
+ * `app/api/ingest/route.ts` (yeni dekont gelince) hem `app/daire/[id]/page.tsx`
+ * (panelde "Toplanan: X/Y ₺" göstergesi) aynı kuralı kullanır — tek kaynak
+ * burası, iki yerde ayrı ayrı `reduce` yazılmaz.
+ */
+export function toplananTutar(
+  dekontlar: { eslesme: ReceiptEslesme; okunan_tutar: number | null }[],
+): number {
+  return dekontlar
+    .filter((d) => d.eslesme === "matched" || d.eslesme === "kismi")
+    .reduce((t, d) => t + (d.okunan_tutar ?? 0), 0);
+}
 
 function ibanSonHane(iban: string | null | undefined, n = 4): string | null {
   if (!iban) return null;
@@ -23,16 +38,23 @@ function ibanSonHane(iban: string | null | undefined, n = 4): string | null {
  * belirler. Saf fonksiyon — veritabanına dokunmaz, böylece kuralı tek başına
  * test etmek mümkün.
  *
+ * `oncekiOdenenTutar`: bu faturaya bu ana kadar "matched" ya da "kismi"
+ * sayılmış dekontların toplamı — paylaşımlı dairelerde (ör. 3 kişi kirayı
+ * ayrı ayrı gönderiyor) her yeni dekont bu toplama eklenip fatura tutarına
+ * ulaşılıp ulaşılmadığına bakılır.
+ *
  * Kural:
  *   okunamadı            -> durum değişmez, panelde "elle bak" uyarısı
- *   tutar eşleşti        -> odendi (incelendi_at null bırakılır: yeşil + rozet)
- *   tutar tutmadı        -> uyusmadi (turuncu)
+ *   toplam tam eşleşti   -> odendi (incelendi_at null bırakılır: yeşil + rozet)
+ *   toplam hâlâ eksik    -> kismi (fatura "gönderildi" durumunda kalır)
+ *   toplam fazla         -> uyusmadi (turuncu)
  *   TL dışı para birimi  -> uyusmadi (tutarlar karşılaştırılamaz)
  */
 export function eslestir(
   okuma: DekontOkuma,
   beklenenTutar: number,
   ayarlardakiIban: string,
+  oncekiOdenenTutar = 0,
 ): EslesmeSonucu {
   if (!okuma.okunabilir || okuma.tutar === null) {
     return {
@@ -53,7 +75,8 @@ export function eslestir(
     };
   }
 
-  const fark = Math.abs(okuma.tutar - beklenenTutar);
+  const toplamSimdi = oncekiOdenenTutar + okuma.tutar;
+  const fark = toplamSimdi - beklenenTutar;
   const uyarilar: string[] = [];
 
   // IBAN kontrolü eşleşmeyi bloklamaz — yalnızca dikkat çeker. Kiracı
@@ -66,11 +89,27 @@ export function eslestir(
     );
   }
 
-  if (fark <= TOLERANS) {
+  if (Math.abs(fark) <= TOLERANS) {
+    const kumulatif =
+      oncekiOdenenTutar > 0
+        ? [`Toplam ${toplamSimdi.toFixed(2)} ₺ ile fatura tam karşılandı.`]
+        : ["Tutar eşleşti."];
     return {
       eslesme: "matched",
       yeniDurum: "odendi",
-      aciklama: ["Tutar eşleşti.", ...uyarilar].join(" "),
+      aciklama: [...kumulatif, ...uyarilar].join(" "),
+    };
+  }
+
+  if (fark < 0) {
+    const kalan = beklenenTutar - toplamSimdi;
+    return {
+      eslesme: "kismi",
+      yeniDurum: null,
+      aciklama: [
+        `Kısmi ödeme alındı: ${toplamSimdi.toFixed(2)} / ${beklenenTutar.toFixed(2)} ₺ (kalan ${kalan.toFixed(2)} ₺).`,
+        ...uyarilar,
+      ].join(" "),
     };
   }
 
@@ -78,7 +117,7 @@ export function eslestir(
     eslesme: "mismatch",
     yeniDurum: "uyusmadi",
     aciklama: [
-      `Beklenen tutar ile dekonttaki tutar arasında ${fark.toFixed(2)} ₺ fark var.`,
+      `Toplam ${toplamSimdi.toFixed(2)} ₺, beklenenden ${fark.toFixed(2)} ₺ fazla.`,
       ...uyarilar,
     ].join(" "),
   };

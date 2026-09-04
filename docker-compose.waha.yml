@@ -1,0 +1,31 @@
+# WAHA (WhatsApp HTTP API) — üretim/VPS dağıtımı için.
+#
+# Her müşteri kendi WhatsApp Business numarasıyla bunun ayrı bir kopyasını
+# çalıştırır (bkz. README "WhatsApp otomasyonu" bölümü). Yerelde denemek için
+# aşağıdaki değişkenleri kendi değerlerinizle doldurup:
+#
+#   docker compose -f docker-compose.waha.yml up -d
+#
+# Oturum verisi `waha_data` volume'ünde kalıcı tutulur — container yeniden
+# başlasa da (VPS reboot, imaj güncellemesi vb.) QR'ı tekrar taratmanız
+# gerekmez.
+
+services:
+  waha:
+    image: devlikeapro/waha
+    container_name: waha
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      WHATSAPP_DEFAULT_ENGINE: NOWEB
+      WAHA_API_KEY: ${WAHA_API_KEY}
+      WAHA_DASHBOARD_USERNAME: ${WAHA_DASHBOARD_USERNAME}
+      WAHA_DASHBOARD_PASSWORD: ${WAHA_DASHBOARD_PASSWORD}
+      WHATSAPP_SWAGGER_USERNAME: ${WAHA_DASHBOARD_USERNAME}
+      WHATSAPP_SWAGGER_PASSWORD: ${WAHA_DASHBOARD_PASSWORD}
+    volumes:
+      - waha_data:/app/.sessions
+
+volumes:
+  waha_data:

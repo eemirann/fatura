@@ -1,6 +1,6 @@
 export type InvoiceDurum = "taslak" | "gonderildi" | "odendi" | "uyusmadi";
 export type ReceiptKaynak = "kiraci_link" | "panel" | "api";
-export type ReceiptEslesme = "matched" | "mismatch" | "unreadable";
+export type ReceiptEslesme = "matched" | "mismatch" | "unreadable" | "kismi";
 
 export type Settings = {
   id: boolean;

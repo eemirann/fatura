@@ -4,11 +4,17 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Kira Fatura Takip",
   description: "Blok ve daire bazlı fatura, WhatsApp bildirimi ve dekont takibi",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Kira Takip",
+  },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  themeColor: "#0f172a",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -9,3 +9,11 @@ build/
 next-env.d.ts
 .DS_Store
 .vercel
+
+# Python (python-dekont-servisi)
+.venv/
+__pycache__/
+*.pyc
+
+.vercel
+.env*

@@ -70,7 +70,7 @@ function BlokKarti({ blok }: { blok: Block & { units: Unit[] } }) {
           <input type="hidden" name="id" value={blok.id} />
           <button
             type="submit"
-            className="rounded-lg px-2 py-1 text-sm text-slate-400 hover:bg-red-50 hover:text-red-700"
+            className="rounded-lg px-2 py-2 text-sm text-slate-400 hover:bg-red-50 hover:text-red-700 sm:py-1"
           >
             Bloğu sil
           </button>
@@ -106,7 +106,7 @@ function BlokKarti({ blok }: { blok: Block & { units: Unit[] } }) {
               )}
               <button
                 onClick={() => setDuzenlenen(daire.id)}
-                className="ml-auto rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                className="ml-auto rounded-lg px-2 py-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 sm:py-1"
               >
                 Düzenle
               </button>
@@ -196,14 +196,14 @@ function DaireDuzenle({ daire, kapat }: { daire: Unit; kapat: () => void }) {
             </span>
             <button
               type="submit"
-              className="rounded-lg bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700"
+              className="rounded-lg bg-red-600 px-3 py-2.5 sm:py-1.5 text-sm text-white hover:bg-red-700"
             >
               Evet, sil
             </button>
             <button
               type="button"
               onClick={() => setSilOnay(false)}
-              className="rounded-lg px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-100"
+              className="rounded-lg px-3 py-2.5 sm:py-1.5 text-sm text-slate-500 hover:bg-slate-100"
             >
               Vazgeç
             </button>
@@ -211,7 +211,7 @@ function DaireDuzenle({ daire, kapat }: { daire: Unit; kapat: () => void }) {
         ) : (
           <button
             onClick={() => setSilOnay(true)}
-            className="rounded-lg px-2 py-1 text-sm text-slate-400 hover:bg-red-50 hover:text-red-700"
+            className="rounded-lg px-2 py-2 text-sm text-slate-400 hover:bg-red-50 hover:text-red-700 sm:py-1"
           >
             Daireyi sil
           </button>

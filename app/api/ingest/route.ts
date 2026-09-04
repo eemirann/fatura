@@ -6,8 +6,8 @@ import {
   mimeDesteklenirMi,
   type DekontOkuma,
   type DesteklenenMime,
-} from "@/lib/dekont-oku.ts";
-import { eslestir, type EslesmeSonucu } from "@/lib/esles.ts";
+} from "@/lib/dekont-servis.ts";
+import { eslestir, toplananTutar, TOLERANS, type EslesmeSonucu } from "@/lib/esles.ts";
 import type { ReceiptKaynak } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -117,7 +117,7 @@ export async function POST(request: Request) {
     return hata("Dosya yüklenemedi: " + yuklemeHatasi.message, 500);
   }
 
-  // ------------------------------------------------------------- Claude ile oku
+  // --------------------------------------------------------------- dekontu oku
   // Okuma başarısız olsa bile dekont kaydedilir; dosya kaybolmasın, ev sahibi
   // açıp elle bakabilsin.
   const beklenenTutar = Number(fatura.toplam);
@@ -131,8 +131,23 @@ export async function POST(request: Request) {
 
   let eslesmeSonucu: EslesmeSonucu;
   if (okuma) {
-    const { data: ayarlar } = await admin.from("settings").select("iban").single();
-    eslesmeSonucu = eslestir(okuma, beklenenTutar, ayarlar?.iban ?? "");
+    const [{ data: ayarlar }, { data: oncekiDekontlar }] = await Promise.all([
+      admin.from("settings").select("iban").single(),
+      admin
+        .from("receipts")
+        .select("eslesme, okunan_tutar")
+        .eq("invoice_id", fatura.id)
+        .in("eslesme", ["matched", "kismi"]),
+    ]);
+    // Paylaşımlı dairelerde birden fazla kişi ayrı ayrı gönderebilir — bu ana
+    // kadar sayılmış tutarlar toplanıp yeni dekont bu toplama eklenir. Bu okuma
+    // ile aşağıdaki insert arasında eşzamanlı bir yükleme gelirse iki dekont da
+    // "kismi" kalabilir; bunu telafi etmek için insert sonrası tekrar toplanır
+    // (bkz. "mutabakat" bloğu).
+    const oncekiOdenenTutar = toplananTutar(
+      (oncekiDekontlar ?? []).map((r) => ({ ...r, okunan_tutar: Number(r.okunan_tutar ?? 0) })),
+    );
+    eslesmeSonucu = eslestir(okuma, beklenenTutar, ayarlar?.iban ?? "", oncekiOdenenTutar);
   } else {
     eslesmeSonucu = {
       eslesme: "unreadable",
@@ -176,6 +191,35 @@ export async function POST(request: Request) {
       .eq("id", fatura.id);
 
     if (durumHatasi) console.error("[ingest] durum güncellenemedi:", durumHatasi.message);
+  }
+
+  // -------------------------------------------------------------- mutabakat
+  // Bu dekont "kismi" kaldıysa: aynı faturaya az önce eşzamanlı başka bir
+  // kısmi dekont daha gelmiş olabilir, ikisi ayrı ayrı okunduğunda tek
+  // başına tutmuyor gibi görünse de birlikte tutuyor olabilir. Insert'ten
+  // sonra taze bir toplam alıp fatura tam karşılanmışsa "odendi"ye çekilir.
+  if (eslesmeSonucu.eslesme === "kismi") {
+    const { data: guncelDekontlar } = await admin
+      .from("receipts")
+      .select("eslesme, okunan_tutar")
+      .eq("invoice_id", fatura.id)
+      .in("eslesme", ["matched", "kismi"]);
+
+    const guncelToplam = toplananTutar(
+      (guncelDekontlar ?? []).map((r) => ({ ...r, okunan_tutar: Number(r.okunan_tutar ?? 0) })),
+    );
+
+    if (Math.abs(guncelToplam - beklenenTutar) <= TOLERANS) {
+      const { error: mutabakatHatasi } = await admin
+        .from("invoices")
+        .update({ durum: "odendi", incelendi_at: null })
+        .eq("id", fatura.id)
+        .neq("durum", "odendi");
+
+      if (mutabakatHatasi) {
+        console.error("[ingest] mutabakat güncellemesi başarısız:", mutabakatHatasi.message);
+      }
+    }
   }
 
   return NextResponse.json({

@@ -5,6 +5,8 @@ import { ayarlariGetir, daireDetayi } from "@/lib/veri";
 import { durumHesapla } from "@/lib/durum";
 import { donemAnahtari, donemEtiketi, isoGun, para, tarihTR } from "@/lib/format";
 import { dekontLinki, mesajOlustur, whatsappLinki } from "@/lib/whatsapp";
+import { wahaAktifMi } from "@/lib/waha";
+import { toplananTutar as toplananTutarHesapla } from "@/lib/esles.ts";
 import FaturaPaneli from "./fatura-paneli";
 import DekontListesi from "./dekont-listesi";
 import { imzaliDekontUrlleri } from "./dekont-url";
@@ -51,11 +53,26 @@ export default async function DairePage({
   const waLink = mesaj ? whatsappLinki(daire.kiraci_telefon, mesaj) : null;
   const dekontUrlleri = fatura ? await imzaliDekontUrlleri(fatura.receipts) : {};
 
+  // Paylaşımlı dairelerde birden fazla kişi ayrı ayrı gönderebilir — şu ana
+  // kadar sayılan (matched/kismi) tutarların toplamı ilerleme göstergesi için.
+  const toplananTutar = fatura
+    ? toplananTutarHesapla(
+        fatura.receipts.map((d) => ({ eslesme: d.eslesme, okunan_tutar: Number(d.okunan_tutar ?? 0) })),
+      )
+    : 0;
+
+  // "Geçen ayki kalemleri kopyala" için: en güncel, en az bir kalemi olan
+  // geçmiş fatura. Yalnızca bu dönem hiç kalem girilmemişse kullanılır.
+  const gecmisKalemliFatura = daire.gecmis.find((g) => g.items.length > 0);
+  const oncekiKalemler = gecmisKalemliFatura
+    ? gecmisKalemliFatura.items.map((k) => ({ baslik: k.baslik, tutar: Number(k.tutar) }))
+    : null;
+
   return (
     <>
       <UstMenu aktif="panel" />
 
-      <main className="mx-auto max-w-4xl p-4">
+      <main className="mx-auto max-w-4xl p-4 pb-20 sm:pb-4">
         <Link
           href={`/?donem=${donem}`}
           className="text-sm text-slate-500 hover:text-slate-900"
@@ -136,8 +153,11 @@ export default async function DairePage({
               : null
           }
           varsayilanVade={ayarlar.varsayilan_son_odeme_gunu}
+          oncekiKalemler={oncekiKalemler}
           mesaj={mesaj}
           waLink={waLink}
+          telefon={daire.kiraci_telefon}
+          wahaAktif={wahaAktifMi()}
           dekontAdresi={fatura ? dekontLinki(fatura.public_token) : null}
         />
 
@@ -146,6 +166,7 @@ export default async function DairePage({
             unitId={daire.id}
             faturaId={fatura.id}
             beklenenTutar={Number(fatura.toplam)}
+            toplananTutar={toplananTutar}
             dekontlar={fatura.receipts.map((d) => ({
               id: d.id,
               kaynak: d.kaynak,

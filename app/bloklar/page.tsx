@@ -24,7 +24,7 @@ export default async function BloklarPage() {
   return (
     <>
       <UstMenu aktif="bloklar" />
-      <main className="mx-auto max-w-6xl p-4">
+      <main className="mx-auto max-w-6xl p-4 pb-20 sm:pb-4">
         <h1 className="mb-1 text-2xl font-semibold">Blok &amp; Daire</h1>
         <p className="mb-6 text-sm text-slate-500">
           Blokları ve daireleri buradan yönetin. Kiracı adı ve telefonu WhatsApp

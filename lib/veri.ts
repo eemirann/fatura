@@ -68,10 +68,58 @@ export async function panelVerisi(donem: string): Promise<BlokKarti[]> {
   }));
 }
 
+export type BildirimDaire = Unit & {
+  block: Block;
+  invoice:
+    | (Invoice & {
+        items: InvoiceItem[];
+        receipts: Pick<Receipt, "eslesme" | "okunan_tutar">[];
+      })
+    | null;
+};
+
+/**
+ * Bildirimler sayfası için: aktif daireler + seçili dönemin faturası +
+ * kısmi ödeme tespiti için dekontların eşleşme/tutar bilgisi (dosya/tarih
+ * gibi ayrıntılar gerekmiyor, sadece toplamayı hesaplayacak kadarı).
+ */
+export async function bildirimVerisi(donem: string): Promise<BildirimDaire[]> {
+  const supabase = await getServerSupabase();
+
+  const [unitsSonuc, faturalarSonuc] = await Promise.all([
+    supabase.from("units").select("*, blocks(*)").eq("aktif", true),
+    supabase
+      .from("invoices")
+      .select("*, invoice_items(*), receipts(eslesme, okunan_tutar)")
+      .eq("donem", donem),
+  ]);
+
+  if (unitsSonuc.error) throw new Error(unitsSonuc.error.message);
+  if (faturalarSonuc.error) throw new Error(faturalarSonuc.error.message);
+
+  const faturaHaritasi = new Map<string, BildirimDaire["invoice"]>();
+  for (const f of faturalarSonuc.data ?? []) {
+    const { invoice_items, receipts, ...invoice } = f as Invoice & {
+      invoice_items: InvoiceItem[];
+      receipts: Pick<Receipt, "eslesme" | "okunan_tutar">[];
+    };
+    faturaHaritasi.set(invoice.unit_id, {
+      ...invoice,
+      items: (invoice_items ?? []).sort((a, b) => a.sira - b.sira),
+      receipts: receipts ?? [],
+    });
+  }
+
+  return ((unitsSonuc.data ?? []) as (Unit & { blocks: Block })[]).map((u) => {
+    const { blocks, ...unit } = u;
+    return { ...unit, block: blocks, invoice: faturaHaritasi.get(unit.id) ?? null };
+  });
+}
+
 export type DaireDetay = Unit & {
   block: Block;
   invoice: (Invoice & { items: InvoiceItem[]; receipts: Receipt[] }) | null;
-  gecmis: Invoice[];
+  gecmis: (Invoice & { items: InvoiceItem[] })[];
 };
 
 /** Daire detay sayfası: daire + seçili dönemin faturası + geçmiş dönemler. */
@@ -99,7 +147,7 @@ export async function daireDetayi(
       .maybeSingle(),
     supabase
       .from("invoices")
-      .select("*")
+      .select("*, invoice_items(*)")
       .eq("unit_id", unitId)
       .neq("donem", donem)
       .order("donem", { ascending: false })
@@ -126,10 +174,17 @@ export async function daireDetayi(
     };
   }
 
+  const gecmis = ((gecmisSonuc.data ?? []) as (Invoice & { invoice_items: InvoiceItem[] })[]).map(
+    ({ invoice_items, ...f }) => ({
+      ...f,
+      items: (invoice_items ?? []).sort((a, b) => a.sira - b.sira),
+    }),
+  );
+
   return {
     ...daire,
     block: blocks,
     invoice,
-    gecmis: (gecmisSonuc.data ?? []) as Invoice[],
+    gecmis,
   };
 }

@@ -35,7 +35,7 @@ export default async function PanelPage({
     <>
       <UstMenu aktif="panel" />
 
-      <main className="mx-auto max-w-6xl p-4">
+      <main className="mx-auto max-w-6xl p-4 pb-20 sm:pb-4">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold">{donemEtiketi(donem)}</h1>
@@ -44,9 +44,12 @@ export default async function PanelPage({
               {dikkat > 0 && (
                 <>
                   {" · "}
-                  <span className="font-medium text-slate-900">
+                  <Link
+                    href={`/bildirimler?donem=${donem}`}
+                    className="font-medium text-slate-900 underline"
+                  >
                     {dikkat} daire ilgi bekliyor
-                  </span>
+                  </Link>
                 </>
               )}
             </p>

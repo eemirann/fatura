@@ -37,16 +37,22 @@ export default function FaturaPaneli({
   donem,
   fatura,
   varsayilanVade,
+  oncekiKalemler,
   mesaj,
   waLink,
+  telefon,
+  wahaAktif,
   dekontAdresi,
 }: {
   unitId: string;
   donem: string;
   fatura: FaturaOzeti | null;
   varsayilanVade: number;
+  oncekiKalemler: { baslik: string; tutar: number }[] | null;
   mesaj: string | null;
   waLink: string | null;
+  telefon: string | null;
+  wahaAktif: boolean;
   dekontAdresi: string | null;
 }) {
   const [kaydetDurum, kaydetAction] = useActionState(faturaKaydet, BOS);
@@ -81,6 +87,18 @@ export default function FaturaPaneli({
     );
   }
 
+  const kalemlerBos = kalemler.every((k) => !k.baslik.trim() && !k.tutar.trim());
+
+  function gecenAyiKopyala() {
+    if (!oncekiKalemler || oncekiKalemler.length === 0) return;
+    setKalemler(
+      oncekiKalemler.map((k) => ({
+        baslik: k.baslik,
+        tutar: k.tutar.toFixed(2).replace(".", ","),
+      })),
+    );
+  }
+
   return (
     <div className="space-y-4">
       <section className="rounded-xl border border-slate-200 bg-white">
@@ -112,7 +130,7 @@ export default function FaturaPaneli({
                   type="button"
                   onClick={() => kalemSil(i)}
                   aria-label="Kalemi sil"
-                  className="rounded-lg px-2 py-2 text-slate-400 hover:bg-red-50 hover:text-red-700"
+                  className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-700 sm:min-h-0 sm:min-w-0 sm:px-2 sm:py-2"
                 >
                   ✕
                 </button>
@@ -124,10 +142,19 @@ export default function FaturaPaneli({
             <button
               type="button"
               onClick={() => kalemEkle()}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 hover:bg-slate-50"
+              className="rounded-lg border border-slate-300 px-3 py-2.5 sm:py-1.5 hover:bg-slate-50"
             >
               + Kalem ekle
             </button>
+            {kalemlerBos && oncekiKalemler && oncekiKalemler.length > 0 && (
+              <button
+                type="button"
+                onClick={gecenAyiKopyala}
+                className="rounded-lg border border-dashed border-slate-300 px-3 py-2.5 sm:py-1.5 text-slate-600 hover:bg-slate-50"
+              >
+                ↺ Geçen ayki kalemleri kopyala
+              </button>
+            )}
             {HAZIR_KALEMLER.filter(
               (h) => !kalemler.some((k) => k.baslik.toLowerCase() === h.toLowerCase()),
             ).map((h) => (
@@ -135,7 +162,7 @@ export default function FaturaPaneli({
                 key={h}
                 type="button"
                 onClick={() => kalemEkle(h)}
-                className="rounded-lg border border-dashed border-slate-300 px-3 py-1.5 text-slate-500 hover:bg-slate-50"
+                className="rounded-lg border border-dashed border-slate-300 px-3 py-2.5 sm:py-1.5 text-slate-500 hover:bg-slate-50"
               >
                 + {h}
               </button>
@@ -179,6 +206,8 @@ export default function FaturaPaneli({
           fatura={fatura}
           mesaj={mesaj}
           waLink={waLink}
+          telefon={telefon}
+          wahaAktif={wahaAktif}
           dekontAdresi={dekontAdresi}
         />
       )}
@@ -191,12 +220,16 @@ function GonderimPaneli({
   fatura,
   mesaj,
   waLink,
+  telefon,
+  wahaAktif,
   dekontAdresi,
 }: {
   unitId: string;
   fatura: FaturaOzeti;
   mesaj: string;
   waLink: string | null;
+  telefon: string | null;
+  wahaAktif: boolean;
   dekontAdresi: string | null;
 }) {
   const [, gonderildiAction] = useActionState(gonderildiIsaretle, BOS);
@@ -222,16 +255,22 @@ function GonderimPaneli({
       <div className="space-y-4 p-4">
         <div className="flex flex-wrap items-center gap-2">
           {waLink ? (
-            // Aynı tıklamada hem WhatsApp açılır hem fatura "gönderildi" olur.
+            // WAHA kapalıyken: aynı tıklamada hem WhatsApp açılır hem fatura
+            // "gönderildi" olur. WAHA açıkken: mesaj sunucudan otomatik gider,
+            // hiçbir sekme açılmaz.
             <form action={gonderildiAction}>
               <input type="hidden" name="fatura_id" value={fatura.id} />
               <input type="hidden" name="unit_id" value={unitId} />
+              <input type="hidden" name="telefon" value={telefon ?? ""} />
+              <input type="hidden" name="mesaj" value={mesaj} />
               <button
                 type="submit"
-                onClick={() => window.open(waLink, "_blank", "noopener")}
+                onClick={() => {
+                  if (!wahaAktif) window.open(waLink, "_blank", "noopener");
+                }}
                 className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
               >
-                WhatsApp&apos;ta gönder
+                {wahaAktif ? "WhatsApp'tan gönder" : "WhatsApp'ta gönder"}
               </button>
             </form>
           ) : (
@@ -287,7 +326,7 @@ function GonderimPaneli({
                 <input type="hidden" name="unit_id" value={unitId} />
                 <button
                   type="submit"
-                  className="rounded-lg px-3 py-1.5 hover:bg-slate-100 hover:text-slate-900"
+                  className="rounded-lg px-3 py-2.5 sm:py-1.5 hover:bg-slate-100 hover:text-slate-900"
                 >
                   Ödemeyi geri al
                 </button>
@@ -299,7 +338,7 @@ function GonderimPaneli({
                 <button
                   type="submit"
                   title="Nakit ödeme veya okunamayan dekont gibi durumlar için"
-                  className="rounded-lg px-3 py-1.5 hover:bg-emerald-50 hover:text-emerald-700"
+                  className="rounded-lg px-3 py-2.5 sm:py-1.5 hover:bg-emerald-50 hover:text-emerald-700"
                 >
                   Elle ödendi işaretle
                 </button>

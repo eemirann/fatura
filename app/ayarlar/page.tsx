@@ -11,7 +11,7 @@ export default async function AyarlarPage() {
   return (
     <>
       <UstMenu aktif="ayarlar" />
-      <main className="mx-auto max-w-3xl p-4">
+      <main className="mx-auto max-w-3xl p-4 pb-20 sm:pb-4">
         <h1 className="mb-1 text-2xl font-semibold">Ayarlar</h1>
         <p className="mb-6 text-sm text-slate-500">
           Buradaki bilgiler kiracılara gidecek WhatsApp mesajında ve dekont
