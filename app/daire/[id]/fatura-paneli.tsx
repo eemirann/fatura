@@ -14,7 +14,7 @@ import {
 
 const BOS: ActionSonuc = {};
 const girdi =
-  "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900";
+  "rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-900";
 
 /** Sık kullanılan kalem adları — tek tıkla eklenir. */
 const HAZIR_KALEMLER = ["Su", "Elektrik", "Doğalgaz", "Aidat"];
@@ -110,30 +110,32 @@ export default function FaturaPaneli({
 
           <div className="space-y-2">
             {kalemler.map((kalem, i) => (
-              <div key={i} className="flex items-center gap-2">
+              <div key={i} className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <input
                   name="baslik"
                   value={kalem.baslik}
                   onChange={(e) => kalemDegistir(i, "baslik", e.target.value)}
                   placeholder="Kalem adı (Su, Elektrik…)"
-                  className={girdi + " flex-1"}
+                  className={girdi + " w-full sm:min-w-0 sm:flex-1"}
                 />
-                <input
-                  name="tutar"
-                  value={kalem.tutar}
-                  onChange={(e) => kalemDegistir(i, "tutar", e.target.value)}
-                  inputMode="decimal"
-                  placeholder="0,00"
-                  className={girdi + " w-32 text-right"}
-                />
-                <button
-                  type="button"
-                  onClick={() => kalemSil(i)}
-                  aria-label="Kalemi sil"
-                  className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-700 sm:min-h-0 sm:min-w-0 sm:px-2 sm:py-2"
-                >
-                  ✕
-                </button>
+                <div className="flex items-center gap-2">
+                  <input
+                    name="tutar"
+                    value={kalem.tutar}
+                    onChange={(e) => kalemDegistir(i, "tutar", e.target.value)}
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    className={girdi + " w-32 shrink-0 text-right"}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => kalemSil(i)}
+                    aria-label="Kalemi sil"
+                    className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-700 sm:min-h-0 sm:min-w-0 sm:px-2 sm:py-2"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -178,7 +180,7 @@ export default function FaturaPaneli({
                 defaultValue={
                   fatura?.son_odeme_tarihi ?? sonOdemeTarihi(donem, varsayilanVade)
                 }
-                className={girdi}
+                className={girdi + " w-full"}
               />
             </label>
 
@@ -232,7 +234,10 @@ function GonderimPaneli({
   wahaAktif: boolean;
   dekontAdresi: string | null;
 }) {
-  const [, gonderildiAction] = useActionState(gonderildiIsaretle, BOS);
+  const [gonderildiDurum, gonderildiAction, gonderiliyor] = useActionState(
+    gonderildiIsaretle,
+    BOS,
+  );
   const [odendiDurum, odendiAction] = useActionState(eldeOdendiIsaretle, BOS);
   const [geriAlDurum, geriAlAction] = useActionState(odemeyiGeriAl, BOS);
   const [kopyalandi, setKopyalandi] = useState<"mesaj" | "link" | null>(null);
@@ -265,17 +270,30 @@ function GonderimPaneli({
               <input type="hidden" name="mesaj" value={mesaj} />
               <button
                 type="submit"
+                disabled={gonderiliyor}
                 onClick={() => {
                   if (!wahaAktif) window.open(waLink, "_blank", "noopener");
                 }}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {wahaAktif ? "WhatsApp'tan gönder" : "WhatsApp'ta gönder"}
+                {gonderiliyor
+                  ? "Gönderiliyor…"
+                  : wahaAktif
+                    ? "WhatsApp'tan gönder"
+                    : "WhatsApp'ta gönder"}
               </button>
             </form>
           ) : (
             <span className="text-sm text-slate-500">
               Telefon numarası yok — mesajı kopyalayıp elle gönderin.
+            </span>
+          )}
+          {gonderildiDurum.hata && (
+            <span className="text-sm text-red-700">{gonderildiDurum.hata}</span>
+          )}
+          {!gonderildiDurum.hata && (gonderildiDurum.basari || fatura.gonderildi_at) && (
+            <span className="text-sm font-medium text-emerald-700">
+              Gönderildi ✓{fatura.gonderildi_at ? ` — ${tarihTR(fatura.gonderildi_at)}` : ""}
             </span>
           )}
 

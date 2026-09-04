@@ -170,17 +170,21 @@ function DekontSatiri({
         </dl>
       )}
 
-      {(dekont.eslesme === "mismatch" || dekont.eslesme === "kismi") && dekont.aciklama && (
-        <p
-          className={`mt-2 rounded-lg px-3 py-2 text-sm ${
-            dekont.eslesme === "mismatch"
-              ? "bg-orange-50 text-orange-900"
-              : "bg-amber-50 text-amber-900"
-          }`}
-        >
-          {dekont.aciklama}
-        </p>
-      )}
+      {dekont.eslesme !== "unreadable" &&
+        dekont.aciklama &&
+        (dekont.eslesme !== "matched" || dekont.aciklama.includes("Dikkat:")) && (
+          <p
+            className={`mt-2 rounded-lg px-3 py-2 text-sm ${
+              dekont.eslesme === "mismatch"
+                ? "bg-orange-50 text-orange-900"
+                : dekont.eslesme === "kismi"
+                  ? "bg-amber-50 text-amber-900"
+                  : "bg-slate-100 text-slate-700"
+            }`}
+          >
+            {dekont.aciklama}
+          </p>
+        )}
     </li>
   );
 }

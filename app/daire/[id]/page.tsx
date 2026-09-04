@@ -133,6 +133,7 @@ export default async function DairePage({
         )}
 
         <FaturaPaneli
+          key={donem}
           unitId={daire.id}
           donem={donem}
           fatura={

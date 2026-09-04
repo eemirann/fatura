@@ -74,7 +74,7 @@ export async function POST(request: Request) {
   let kaynak: ReceiptKaynak;
   const sorgu = admin
     .from("invoices")
-    .select("id, unit_id, toplam, durum")
+    .select("id, unit_id, toplam, durum, donem")
     .limit(1);
 
   if (token) {
@@ -147,7 +147,13 @@ export async function POST(request: Request) {
     const oncekiOdenenTutar = toplananTutar(
       (oncekiDekontlar ?? []).map((r) => ({ ...r, okunan_tutar: Number(r.okunan_tutar ?? 0) })),
     );
-    eslesmeSonucu = eslestir(okuma, beklenenTutar, ayarlar?.iban ?? "", oncekiOdenenTutar);
+    eslesmeSonucu = eslestir(
+      okuma,
+      beklenenTutar,
+      ayarlar?.iban ?? "",
+      oncekiOdenenTutar,
+      fatura.donem,
+    );
   } else {
     eslesmeSonucu = {
       eslesme: "unreadable",

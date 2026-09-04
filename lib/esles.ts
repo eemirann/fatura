@@ -50,11 +50,25 @@ function ibanSonHane(iban: string | null | undefined, n = 4): string | null {
  *   toplam fazla         -> uyusmadi (turuncu)
  *   TL dışı para birimi  -> uyusmadi (tutarlar karşılaştırılamaz)
  */
+/** Dekont tarihi fatura döneminden bu kadar gün önceyse "eski tarihli" uyarısı verilir. */
+const ESKI_TARIH_TOLERANS_GUN = 60;
+
+/** "2026-09-01" gibi bir dönem, dekont tarihinden en az bu kadar gün sonraysa eskidir. */
+function eskiTarihliMi(okunanTarih: string | null, faturaDonemi?: string): boolean {
+  if (!okunanTarih || !faturaDonemi) return false;
+  const dekont = new Date(okunanTarih);
+  const donem = new Date(faturaDonemi);
+  if (Number.isNaN(dekont.getTime()) || Number.isNaN(donem.getTime())) return false;
+  const farkGun = (donem.getTime() - dekont.getTime()) / 86_400_000;
+  return farkGun > ESKI_TARIH_TOLERANS_GUN;
+}
+
 export function eslestir(
   okuma: DekontOkuma,
   beklenenTutar: number,
   ayarlardakiIban: string,
   oncekiOdenenTutar = 0,
+  faturaDonemi?: string,
 ): EslesmeSonucu {
   if (!okuma.okunabilir || okuma.tutar === null) {
     return {
@@ -86,6 +100,14 @@ export function eslestir(
   if (beklenenSon && okunanSon && beklenenSon !== okunanSon) {
     uyarilar.push(
       `Dikkat: alıcı IBAN'ı ayarlardakinden farklı görünüyor (…${okunanSon}).`,
+    );
+  }
+
+  // Eşleşmeyi bloklamaz — yalnızca dikkat çeker. Kiracı elindeki eski/başka
+  // bir aya ait dekontu tekrar göndermiş olabilir.
+  if (eskiTarihliMi(okuma.tarih, faturaDonemi)) {
+    uyarilar.push(
+      `Dikkat: dekont tarihi (${okuma.tarih}) fatura döneminden çok eski görünüyor — eski/yanlış bir dekont olabilir.`,
     );
   }
 

@@ -129,7 +129,7 @@ export async function gonderildiIsaretle(
 
   revalidatePath(`/daire/${unitId}`);
   revalidatePath("/");
-  return {};
+  return { basari: "Gönderildi ✓" };
 }
 
 /** Dekonta göz atıldıktan sonra "incelenmedi" rozetini düşürür. */
