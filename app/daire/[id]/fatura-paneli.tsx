@@ -43,6 +43,7 @@ export default function FaturaPaneli({
   telefon,
   wahaAktif,
   dekontAdresi,
+  saltOkunur = false,
 }: {
   unitId: string;
   donem: string;
@@ -54,6 +55,7 @@ export default function FaturaPaneli({
   telefon: string | null;
   wahaAktif: boolean;
   dekontAdresi: string | null;
+  saltOkunur?: boolean;
 }) {
   const [kaydetDurum, kaydetAction] = useActionState(faturaKaydet, BOS);
 
@@ -107,7 +109,12 @@ export default function FaturaPaneli({
         <form action={kaydetAction} className="space-y-4 p-4">
           <input type="hidden" name="unit_id" value={unitId} />
           <input type="hidden" name="donem" value={donem} />
-
+          {saltOkunur && (
+            <p className="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-600">
+              Görüntüleyici rolündesiniz — düzenleyemezsiniz.
+            </p>
+          )}
+          <fieldset disabled={saltOkunur} className="space-y-4">
           <div className="space-y-2">
             {kalemler.map((kalem, i) => (
               <div key={i} className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -199,12 +206,14 @@ export default function FaturaPaneli({
               <span className="text-sm text-emerald-700">{kaydetDurum.basari}</span>
             )}
           </div>
+          </fieldset>
         </form>
       </section>
 
       {fatura && mesaj && (
         <GonderimPaneli
           unitId={unitId}
+          saltOkunur={saltOkunur}
           fatura={fatura}
           mesaj={mesaj}
           waLink={waLink}
@@ -225,6 +234,7 @@ function GonderimPaneli({
   telefon,
   wahaAktif,
   dekontAdresi,
+  saltOkunur = false,
 }: {
   unitId: string;
   fatura: FaturaOzeti;
@@ -233,6 +243,7 @@ function GonderimPaneli({
   telefon: string | null;
   wahaAktif: boolean;
   dekontAdresi: string | null;
+  saltOkunur?: boolean;
 }) {
   const [gonderildiDurum, gonderildiAction, gonderiliyor] = useActionState(
     gonderildiIsaretle,
@@ -270,7 +281,7 @@ function GonderimPaneli({
               <input type="hidden" name="mesaj" value={mesaj} />
               <button
                 type="submit"
-                disabled={gonderiliyor}
+                disabled={gonderiliyor || saltOkunur}
                 onClick={() => {
                   if (!wahaAktif) window.open(waLink, "_blank", "noopener");
                 }}
@@ -344,7 +355,8 @@ function GonderimPaneli({
                 <input type="hidden" name="unit_id" value={unitId} />
                 <button
                   type="submit"
-                  className="rounded-lg px-3 py-2.5 sm:py-1.5 hover:bg-slate-100 hover:text-slate-900"
+                  disabled={saltOkunur}
+                  className="rounded-lg px-3 py-2.5 sm:py-1.5 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Ödemeyi geri al
                 </button>
@@ -355,8 +367,9 @@ function GonderimPaneli({
                 <input type="hidden" name="unit_id" value={unitId} />
                 <button
                   type="submit"
+                  disabled={saltOkunur}
                   title="Nakit ödeme veya okunamayan dekont gibi durumlar için"
-                  className="rounded-lg px-3 py-2.5 sm:py-1.5 hover:bg-emerald-50 hover:text-emerald-700"
+                  className="rounded-lg px-3 py-2.5 sm:py-1.5 hover:bg-emerald-50 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Elle ödendi işaretle
                 </button>

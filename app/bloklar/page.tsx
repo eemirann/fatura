@@ -1,5 +1,6 @@
 import UstMenu from "@/components/ust-menu";
 import { getServerSupabase } from "@/lib/supabase/server";
+import { kullaniciRolu } from "@/lib/supabase/rol";
 import type { Block, Unit } from "@/lib/types";
 import BlokYonetimi from "./blok-yonetimi";
 
@@ -7,10 +8,10 @@ export const dynamic = "force-dynamic";
 
 export default async function BloklarPage() {
   const supabase = await getServerSupabase();
-  const { data, error } = await supabase
-    .from("blocks")
-    .select("*, units(*)")
-    .order("sira", { ascending: true });
+  const [{ data, error }, rol] = await Promise.all([
+    supabase.from("blocks").select("*, units(*)").order("sira", { ascending: true }),
+    kullaniciRolu(),
+  ]);
 
   if (error) throw new Error(error.message);
 
@@ -30,7 +31,7 @@ export default async function BloklarPage() {
           Blokları ve daireleri buradan yönetin. Kiracı adı ve telefonu WhatsApp
           mesajında kullanılır.
         </p>
-        <BlokYonetimi bloklar={bloklar} />
+        <BlokYonetimi bloklar={bloklar} saltOkunur={rol !== "yonetici"} />
       </main>
     </>
   );

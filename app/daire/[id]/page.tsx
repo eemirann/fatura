@@ -6,6 +6,7 @@ import { durumHesapla } from "@/lib/durum";
 import { donemAnahtari, donemEtiketi, isoGun, para, tarihTR } from "@/lib/format";
 import { dekontLinki, mesajOlustur, whatsappLinki } from "@/lib/whatsapp";
 import { wahaAktifMi } from "@/lib/waha";
+import { kullaniciRolu } from "@/lib/supabase/rol.ts";
 import { toplananTutar as toplananTutarHesapla } from "@/lib/esles.ts";
 import FaturaPaneli from "./fatura-paneli";
 import DekontListesi from "./dekont-listesi";
@@ -26,8 +27,13 @@ export default async function DairePage({
   const { donem: istenen } = await searchParams;
   const donem = istenen && GECERLI_DONEM.test(istenen) ? istenen : donemAnahtari();
 
-  const [daire, ayarlar] = await Promise.all([daireDetayi(id, donem), ayarlariGetir()]);
+  const [daire, ayarlar, rol] = await Promise.all([
+    daireDetayi(id, donem),
+    ayarlariGetir(),
+    kullaniciRolu(),
+  ]);
   if (!daire) notFound();
+  const saltOkunur = rol !== "yonetici";
 
   const durum = durumHesapla(daire.invoice, isoGun());
   const fatura = daire.invoice;
@@ -160,6 +166,7 @@ export default async function DairePage({
           telefon={daire.kiraci_telefon}
           wahaAktif={wahaAktifMi()}
           dekontAdresi={fatura ? dekontLinki(fatura.public_token) : null}
+          saltOkunur={saltOkunur}
         />
 
         {fatura && (
@@ -183,6 +190,7 @@ export default async function DairePage({
               created_at: d.created_at,
               url: dekontUrlleri[d.id] ?? null,
             }))}
+            saltOkunur={saltOkunur}
           />
         )}
 

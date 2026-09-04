@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/supabase/admin";
 import { getUser } from "@/lib/supabase/server";
+import { kullaniciRolu } from "@/lib/supabase/rol";
 import {
   dekontOku,
   mimeDesteklenirMi,
@@ -86,6 +87,11 @@ export async function POST(request: Request) {
     if (!otomasyon) {
       const user = await getUser();
       if (!user) return hata("Bu işlem için giriş yapmalısınız.", 401);
+      // admin istemci RLS'i baypas ettiği için rol kontrolünü burada elle
+      // yapıyoruz — görüntüleyici rolündeki bir kullanıcı dekont yükleyemez.
+      if ((await kullaniciRolu()) !== "yonetici") {
+        return hata("Bu işlem için yönetici yetkisi gerekir.", 403);
+      }
     }
     kaynak = otomasyon ? "api" : "panel";
     sorgu.eq("id", invoiceId);

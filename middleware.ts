@@ -6,6 +6,7 @@ import { createServerClient } from "@supabase/ssr";
  *
  * Herkese açık kalanlar:
  *   /giris     — giriş formu
+ *   /davet, /auth/callback — davetle gelen kullanıcının şifre belirleme akışı
  *   /y/*       — kiracının dekont yükleme sayfası (yetki token'ın kendisidir)
  *   /api/ingest— dekont girişi (token ya da X-Ingest-Key ile kendi doğrulamasını yapar)
  *   /api/whatsapp-webhook — WAHA'dan gelen çağrı (X-Webhook-Secret ile kendi doğrulamasını yapar)
@@ -14,6 +15,8 @@ import { createServerClient } from "@supabase/ssr";
  */
 const ACIK_YOLLAR = [
   "/giris",
+  "/davet",
+  "/auth/callback",
   "/y",
   "/api/ingest",
   "/api/whatsapp-webhook",

@@ -55,12 +55,14 @@ export default function DekontListesi({
   beklenenTutar,
   toplananTutar,
   dekontlar,
+  saltOkunur = false,
 }: {
   unitId: string;
   faturaId: string;
   beklenenTutar: number;
   toplananTutar: number;
   dekontlar: DekontGorunum[];
+  saltOkunur?: boolean;
 }) {
   const [incelendiDurum, incelendiAction] = useActionState(incelendiIsaretle, BOS);
   const kismiOdemeVar = toplananTutar > 0 && toplananTutar < beklenenTutar - 0.01;
@@ -77,7 +79,7 @@ export default function DekontListesi({
           )}
         </h2>
 
-        {dekontlar.length > 0 && (
+        {dekontlar.length > 0 && !saltOkunur && (
           <form action={incelendiAction}>
             <input type="hidden" name="fatura_id" value={faturaId} />
             <input type="hidden" name="unit_id" value={unitId} />
@@ -118,7 +120,7 @@ export default function DekontListesi({
         </ul>
       )}
 
-      <YuklemeFormu faturaId={faturaId} />
+      {!saltOkunur && <YuklemeFormu faturaId={faturaId} />}
     </section>
   );
 }

@@ -2,8 +2,44 @@
 
 import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server.ts";
+import { getAdminSupabase } from "@/lib/supabase/admin.ts";
+import { kullaniciRolu } from "@/lib/supabase/rol.ts";
 
 export type ActionSonuc = { hata?: string; basari?: string };
+
+/**
+ * Yeni kullanıcıya davet e-postası gönderir — herkese açık kayıt formu yok,
+ * hesaplar yalnızca mevcut bir yöneticinin daveti ile açılır.
+ */
+export async function kullaniciDavetEt(
+  _prev: ActionSonuc,
+  fd: FormData,
+): Promise<ActionSonuc> {
+  if ((await kullaniciRolu()) !== "yonetici") {
+    return { hata: "Bu işlem için yönetici yetkisi gerekir." };
+  }
+
+  const eposta = String(fd.get("eposta") ?? "").trim();
+  const rol = String(fd.get("rol") ?? "goruntuleyici");
+  if (!eposta) return { hata: "E-posta gerekli." };
+  if (rol !== "yonetici" && rol !== "goruntuleyici") {
+    return { hata: "Geçersiz rol." };
+  }
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  if (!siteUrl) return { hata: "NEXT_PUBLIC_SITE_URL tanımlı değil." };
+
+  const admin = getAdminSupabase();
+  const { error } = await admin.auth.admin.inviteUserByEmail(eposta, {
+    data: { rol },
+    redirectTo: `${siteUrl}/auth/callback`,
+  });
+
+  if (error) return { hata: error.message };
+
+  revalidatePath("/ayarlar");
+  return { basari: `${eposta} adresine davet gönderildi.` };
+}
 
 export async function ayarlariKaydet(
   _prev: ActionSonuc,

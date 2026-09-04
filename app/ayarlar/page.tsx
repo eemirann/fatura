@@ -1,12 +1,31 @@
 import UstMenu from "@/components/ust-menu";
 import { ayarlariGetir } from "@/lib/veri.ts";
 import { YER_TUTUCULAR } from "@/lib/whatsapp.ts";
+import { getServerSupabase } from "@/lib/supabase/server.ts";
+import { kullaniciRolu } from "@/lib/supabase/rol.ts";
 import AyarFormu from "./ayar-formu";
+import KullaniciDavetFormu from "./kullanici-davet-formu";
 
 export const dynamic = "force-dynamic";
 
+const ROL_ETIKET: Record<string, string> = {
+  yonetici: "Yönetici",
+  goruntuleyici: "Görüntüleyici",
+};
+
 export default async function AyarlarPage() {
   const ayarlar = await ayarlariGetir();
+  const rol = await kullaniciRolu();
+
+  let kullanicilar: { email: string; rol: string }[] = [];
+  if (rol === "yonetici") {
+    const supabase = await getServerSupabase();
+    const { data } = await supabase
+      .from("profiles")
+      .select("email, rol")
+      .order("created_at");
+    kullanicilar = data ?? [];
+  }
 
   return (
     <>
@@ -18,7 +37,37 @@ export default async function AyarlarPage() {
           sayfasında kullanılır.
         </p>
 
-        <AyarFormu ayarlar={ayarlar} yerTutucular={[...YER_TUTUCULAR]} />
+        <AyarFormu
+          ayarlar={ayarlar}
+          yerTutucular={[...YER_TUTUCULAR]}
+          saltOkunur={rol !== "yonetici"}
+        />
+
+        {rol === "yonetici" && (
+          <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4">
+            <h2 className="mb-1 font-medium text-slate-900">Kullanıcılar</h2>
+            <p className="mb-4 text-sm text-slate-500">
+              Herkese açık kayıt yok — yalnızca aşağıdan davet ettiğiniz
+              kişiler hesap açabilir. Görüntüleyici rolündekiler veriyi
+              görebilir ama değiştiremez.
+            </p>
+
+            {kullanicilar.length > 0 && (
+              <ul className="mb-4 space-y-1.5 text-sm">
+                {kullanicilar.map((k) => (
+                  <li key={k.email} className="flex items-center justify-between">
+                    <span>{k.email}</span>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-600">
+                      {ROL_ETIKET[k.rol] ?? k.rol}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <KullaniciDavetFormu />
+          </section>
+        )}
 
         <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
           <h2 className="mb-2 font-medium text-slate-900">Nasıl çalışıyor?</h2>
