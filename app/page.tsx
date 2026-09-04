@@ -54,7 +54,15 @@ export default async function PanelPage({
               )}
             </p>
           </div>
-          <DonemSecici donem={donem} />
+          <div className="flex items-end gap-2">
+            <a
+              href={`/api/export/csv?yil=${donem.slice(0, 4)}`}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50"
+            >
+              {donem.slice(0, 4)} CSV indir
+            </a>
+            <DonemSecici donem={donem} />
+          </div>
         </div>
 
         <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">

@@ -9,6 +9,7 @@ import {
   type DesteklenenMime,
 } from "@/lib/dekont-servis.ts";
 import { eslestir, toplananTutar, TOLERANS, type EslesmeSonucu } from "@/lib/esles.ts";
+import { rateLimitIzniVar, istekIpAdresi } from "@/lib/rate-limit";
 import type { ReceiptKaynak } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -38,7 +39,23 @@ function hata(mesaj: string, kod = 400) {
  *
  * n8n eklendiğinde panel kodunun değişmesi gerekmez; aynı sözleşmeye POST eder.
  */
+const IP_LIMIT = 20;
+const IP_PENCERE_MS = 10 * 60_000;
+
 export async function POST(request: Request) {
+  // Otomasyon (X-Ingest-Key ile doğrulanmış n8n/WAHA) hariç, aynı IP'den
+  // dakikalar içinde çok sayıda istek gelirse (public /y/[token] linkinin
+  // kötüye kullanılması ihtimali) reddet. public_token zaten tahmin
+  // edilemez olduğu için asıl güvenlik sınırı bu değil — sadece spam freni.
+  const otomasyonIstegi = request.headers.get("x-ingest-key") === process.env.INGEST_API_KEY
+    && Boolean(process.env.INGEST_API_KEY);
+  if (!otomasyonIstegi) {
+    const ip = istekIpAdresi(request);
+    if (!rateLimitIzniVar(`ingest:${ip}`, IP_LIMIT, IP_PENCERE_MS)) {
+      return hata("Çok fazla istek gönderildi. Birkaç dakika sonra tekrar deneyin.", 429);
+    }
+  }
+
   let form: FormData;
   try {
     form = await request.formData();

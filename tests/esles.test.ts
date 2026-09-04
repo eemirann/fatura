@@ -106,6 +106,42 @@ test("ayarlarda IBAN yoksa uyarı üretilmez", () => {
   assert.doesNotMatch(s.aciklama, /IBAN/);
 });
 
+test("dekont, fatura döneminden 60 günden fazla eskiyse uyarı eklenir", () => {
+  const s = eslestir(
+    okuma({ tarih: "2023-03-12" }),
+    1650,
+    IBAN,
+    0,
+    "2026-09-01",
+  );
+  assert.equal(s.eslesme, "matched");
+  assert.match(s.aciklama, /eski/i);
+});
+
+test("dekont tarihi fatura dönemine yakınsa eski tarih uyarısı gelmez", () => {
+  const s = eslestir(
+    okuma({ tarih: "2026-08-15" }),
+    1650,
+    IBAN,
+    0,
+    "2026-09-01",
+  );
+  assert.equal(s.eslesme, "matched");
+  assert.doesNotMatch(s.aciklama, /eski/i);
+});
+
+test("fatura dönemi verilmezse eski tarih kontrolü yapılmaz", () => {
+  const s = eslestir(okuma({ tarih: "2020-01-01" }), 1650, IBAN);
+  assert.equal(s.eslesme, "matched");
+  assert.doesNotMatch(s.aciklama, /eski/i);
+});
+
+test("dekont tarihi okunamadıysa eski tarih uyarısı atlanır", () => {
+  const s = eslestir(okuma({ tarih: null }), 1650, IBAN, 0, "2026-09-01");
+  assert.equal(s.eslesme, "matched");
+  assert.doesNotMatch(s.aciklama, /eski/i);
+});
+
 test("toplananTutar yalnızca matched ve kismi dekontları sayar", () => {
   const toplam = toplananTutar([
     { eslesme: "matched", okunan_tutar: 500 },

@@ -1,52 +1,17 @@
 import "server-only";
-import { waTelefon } from "./format.ts";
 
 /**
  * WAHA (WhatsApp HTTP API) üzerinden otomatik mesaj gönderimi.
  *
  * WAHA_URL ayarlanmamışsa otomasyon kapalı sayılır — arayan taraf bunu kontrol
  * edip manuel wa.me akışına düşer, bu dosya sessizce hata üretmez.
+ *
+ * Saf ayrıştırma mantığı (testlerde de kullanılabilsin diye) lib/waha-ayristir.ts'te.
  */
-
-export function wahaAktifMi(): boolean {
-  return Boolean(process.env.WAHA_URL);
-}
+export { wahaAktifMi, wahaGonderenNumarasi, type WahaMesaj } from "./waha-ayristir.ts";
+import { chatId } from "./waha-ayristir.ts";
 
 export type WahaSonuc = { basari: true } | { basari: false; hata: string };
-
-/** Telefonu WAHA'nın beklediği chatId biçimine çevirir: "905321112233@c.us" */
-function chatId(telefon: string): string | null {
-  const numara = waTelefon(telefon);
-  return numara ? `${numara}@c.us` : null;
-}
-
-/** WAHA'nın webhook'ta gönderdiği mesaj payload'ının bu dosyada kullanılan alanları. */
-export type WahaMesaj = {
-  id?: string;
-  from?: string;
-  fromMe?: boolean;
-  hasMedia?: boolean;
-  media?: { url?: string; mimetype?: string; filename?: string | null };
-  _data?: { key?: { remoteJidAlt?: string } };
-};
-
-/**
- * Gönderenin gerçek telefon numarasını çıkarır.
- *
- * WhatsApp'ın "lid" (linked ID) adresleme modunda `from` alanı numara değil,
- * bir bağlantı kimliği oluyor (`123...@lid`) — gerçek numara
- * `_data.key.remoteJidAlt`'ta (`905...@s.whatsapp.net`) geliyor. Eski/klasik
- * kişilerde `from` doğrudan `905...@c.us` biçiminde de gelebiliyor.
- */
-export function wahaGonderenNumarasi(mesaj: WahaMesaj): string | null {
-  const remoteJidAlt = mesaj._data?.key?.remoteJidAlt;
-  if (remoteJidAlt) {
-    const numara = remoteJidAlt.split("@")[0];
-    if (numara) return numara;
-  }
-  if (mesaj.from?.endsWith("@c.us")) return mesaj.from.split("@")[0];
-  return null;
-}
 
 /**
  * Webhook payload'ındaki medya URL'i WAHA'nın kendi iç adresini (ör.
