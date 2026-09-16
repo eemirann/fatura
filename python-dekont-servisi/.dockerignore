@@ -1,0 +1,10 @@
+# Yerel sanal ortam (Windows ikilileri içerir, imaja asla girmemeli)
+.venv/
+__pycache__/
+*.pyc
+
+# Testler imajda gerekmiyor
+test_*.py
+
+Dockerfile
+.dockerignore

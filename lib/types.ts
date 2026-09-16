@@ -49,6 +49,8 @@ export type Invoice = {
   public_token: string;
   gonderildi_at: string | null;
   incelendi_at: string | null;
+  /** Otomatik hatırlatmanın en son gittiği an (bkz. app/api/cron/hatirlat). */
+  son_hatirlatma_at: string | null;
   created_at: string;
   updated_at: string;
 };

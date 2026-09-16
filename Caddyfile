@@ -1,0 +1,37 @@
+# Sunucu tarafı servislerin TLS sonlandırması.
+#
+# Caddy sertifikaları Let's Encrypt'ten kendisi alır ve yeniler — elle sertifika
+# yönetmeniz gerekmez. Tek koşul: aşağıdaki iki alt alan adının A kaydı bu
+# sunucunun IP'sine bakmalı ve 80/443 portları dışarıya açık olmalı.
+# (80 yalnızca sertifika doğrulaması ve HTTPS'e yönlendirme için kullanılır.)
+#
+# DOMAIN ve ACME_EMAIL değerleri docker-compose.yml üzerinden gelir.
+{
+	# Sertifika süresi dolmadan önce uyarı e-postası buraya gider.
+	email {$ACME_EMAIL}
+}
+
+# Dekont okuma servisi — Vercel'deki panel buraya istek atar.
+dekont.{$DOMAIN} {
+	reverse_proxy dekont:8000 {
+		# OCR uzun sürebiliyor; panel tarafı zaten 55sn'de vazgeçiyor
+		# (lib/dekont-servis.ts), Caddy ondan önce kesmesin.
+		transport http {
+			read_timeout 120s
+		}
+	}
+
+	# Uygulamanın kendi sınırıyla aynı (10 MB dosya + form yükü için pay).
+	request_body {
+		max_size 12MB
+	}
+
+	encode gzip
+}
+
+# WAHA — panel buraya mesaj gönderir, siz de panosuna buradan girersiniz.
+waha.{$DOMAIN} {
+	reverse_proxy waha:3000
+
+	encode gzip
+}

@@ -151,6 +151,7 @@ export default async function DairePage({
                   son_odeme_tarihi: fatura.son_odeme_tarihi,
                   gonderildi_at: fatura.gonderildi_at,
                   incelendi_at: fatura.incelendi_at,
+                  son_hatirlatma_at: fatura.son_hatirlatma_at,
                   public_token: fatura.public_token,
                   items: fatura.items.map((k) => ({
                     baslik: k.baslik,

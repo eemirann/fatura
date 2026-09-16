@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server.ts";
 import { getAdminSupabase } from "@/lib/supabase/admin.ts";
-import { kullaniciRolu } from "@/lib/supabase/rol.ts";
+import { yoneticiDegilse } from "@/lib/supabase/rol.ts";
 
 export type ActionSonuc = { hata?: string; basari?: string };
 
@@ -15,9 +15,8 @@ export async function kullaniciDavetEt(
   _prev: ActionSonuc,
   fd: FormData,
 ): Promise<ActionSonuc> {
-  if ((await kullaniciRolu()) !== "yonetici") {
-    return { hata: "Bu işlem için yönetici yetkisi gerekir." };
-  }
+  const yetkisiz = await yoneticiDegilse();
+  if (yetkisiz) return yetkisiz;
 
   const eposta = String(fd.get("eposta") ?? "").trim();
   const rol = String(fd.get("rol") ?? "goruntuleyici");
@@ -45,6 +44,9 @@ export async function ayarlariKaydet(
   _prev: ActionSonuc,
   fd: FormData,
 ): Promise<ActionSonuc> {
+  const yetkisiz = await yoneticiDegilse();
+  if (yetkisiz) return yetkisiz;
+
   const iban = String(fd.get("iban") ?? "").replace(/\s+/g, " ").trim();
   const hesap_sahibi = String(fd.get("hesap_sahibi") ?? "").trim();
   const mesaj_sablonu = String(fd.get("mesaj_sablonu") ?? "").trim();

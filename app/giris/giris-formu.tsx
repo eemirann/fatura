@@ -34,7 +34,13 @@ export default function GirisFormu() {
     }
 
     // Middleware'in tazelenen oturumu görmesi için tam yenileme yap.
-    const devam = params.get("devam") || "/";
+    // `devam`'i doğrulamadan kullanmıyoruz: middleware buraya hep iç bir
+    // pathname yazar (middleware.ts), ama adres çubuğuna elle yazılan
+    // ?devam=https://... açık yönlendirmeye dönüşürdü. "//" ile başlayan
+    // değer de protokole bağlı dış adres sayılır.
+    const istenen = params.get("devam") ?? "";
+    const devam =
+      istenen.startsWith("/") && !istenen.startsWith("//") ? istenen : "/";
     router.replace(devam);
     router.refresh();
   }

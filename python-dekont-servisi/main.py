@@ -1,4 +1,5 @@
 import os
+import secrets
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from pydantic import BaseModel
@@ -23,10 +24,22 @@ class DekontYanit(BaseModel):
 
 
 def anahtari_dogrula(x_service_key: str | None = Header(default=None)) -> None:
+    """Fail-closed: DEKONT_SERVICE_KEY tanımlı değilse hiçbir istek kabul edilmez.
+
+    Servis üretimde VPS'te herkese açık bir portta duruyor (Vercel'in ona
+    ulaşabilmesi gerekiyor), dolayısıyla anahtarı kurulumda atlamak ucu
+    internete açık bırakırdı. Aynı kalıp: app/api/cron/hatirlat.
+    """
     beklenen = os.environ.get("DEKONT_SERVICE_KEY")
     if not beklenen:
-        return
-    if x_service_key != beklenen:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "DEKONT_SERVICE_KEY tanımlı değil; servis yapılandırılmadan "
+                "istek kabul etmiyor."
+            ),
+        )
+    if not secrets.compare_digest(x_service_key or "", beklenen):
         raise HTTPException(status_code=401, detail="Geçersiz servis anahtarı.")
 
 

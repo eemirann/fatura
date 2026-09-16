@@ -3,11 +3,17 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { para } from "@/lib/format";
+import type { ReceiptEslesme } from "@/lib/types";
 
 type Sonuc = {
-  eslesme: "matched" | "mismatch" | "unreadable";
+  // Daraltılmış bir kopya tutmuyoruz: /api/ingest yeni bir eşleşme türü
+  // döndürdüğünde aşağıdaki KUTULAR eksik kalırsa typecheck patlar.
+  eslesme: ReceiptEslesme;
   okunan_tutar: number | null;
   beklenen_tutar: number;
+  /** Sunucunun ürettiği açıklama metni — kısmi ödemede birikmiş toplamı ve
+   *  kalan tutarı içerir (bkz. lib/esles.ts). */
+  aciklama?: string;
 };
 
 export default function KiraciYukleme({ token }: { token: string }) {
@@ -110,7 +116,13 @@ export default function KiraciYukleme({ token }: { token: string }) {
 }
 
 function SonucKutusu({ sonuc, yeniden }: { sonuc: Sonuc; yeniden: () => void }) {
-  const kutular = {
+  // Record<ReceiptEslesme, ...>: yeni bir eşleşme türü eklenirse karşılığı
+  // yazılmadan derleme geçmez — eksik dal artık çalışma zamanında
+  // "undefined" okunup çökmeye dönüşmez.
+  const KUTULAR: Record<
+    ReceiptEslesme,
+    { sinif: string; baslik: string; metin: string }
+  > = {
     matched: {
       sinif: "border-emerald-200 bg-emerald-50 text-emerald-900",
       baslik: "Dekontunuz alındı, teşekkürler.",
@@ -123,6 +135,18 @@ function SonucKutusu({ sonuc, yeniden }: { sonuc: Sonuc; yeniden: () => void }) 
         sonuc.beklenen_tutar,
       )}. Ev sahibiniz kontrol edecek.`,
     },
+    kismi: {
+      sinif: "border-amber-200 bg-amber-50 text-amber-900",
+      baslik: "Dekontunuz alındı, ödemeniz kısmen tamamlandı.",
+      // Kalan tutarı burada yeniden hesaplamıyoruz: aynı faturaya daha önce
+      // başka bir kısmi dekont gelmiş olabilir. Sunucu birikmiş toplamı zaten
+      // biliyor ve açıklama metnine yazıyor (lib/esles.ts kısmi dalı).
+      metin:
+        sonuc.aciklama ??
+        `Dekontta ${para(sonuc.okunan_tutar)} görünüyor, faturanın tamamı ${para(
+          sonuc.beklenen_tutar,
+        )}. Kalan tutar için ödemenizi tamamlayabilirsiniz.`,
+    },
     unreadable: {
       sinif: "border-slate-200 bg-slate-50 text-slate-800",
       baslik: "Dekontunuz alındı.",
@@ -130,13 +154,15 @@ function SonucKutusu({ sonuc, yeniden }: { sonuc: Sonuc; yeniden: () => void }) 
         "Tutar otomatik okunamadı, ev sahibiniz dekontu elle kontrol edecek. " +
         "Dilerseniz daha net bir görüntü gönderebilirsiniz.",
     },
-  }[sonuc.eslesme];
+  };
+
+  const kutu = KUTULAR[sonuc.eslesme];
 
   return (
     <div className="space-y-3">
-      <div className={`rounded-xl border px-4 py-3 ${kutular.sinif}`}>
-        <p className="font-medium">{kutular.baslik}</p>
-        <p className="mt-1 text-sm">{kutular.metin}</p>
+      <div className={`rounded-xl border px-4 py-3 ${kutu.sinif}`}>
+        <p className="font-medium">{kutu.baslik}</p>
+        <p className="mt-1 text-sm">{kutu.metin}</p>
       </div>
       <button
         onClick={yeniden}

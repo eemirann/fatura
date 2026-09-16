@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSupabase, getUser } from "@/lib/supabase/server";
 import { durumHesapla } from "@/lib/durum";
 import { isoGun } from "@/lib/format";
+import { csvAlan } from "@/lib/csv";
 
 export const runtime = "nodejs";
 
@@ -14,13 +15,6 @@ const DURUM_ETIKET: Record<string, string> = {
   odendi_incelenmedi: "Ödendi",
   odendi: "Ödendi",
 };
-
-/** CSV alanını gerekirse tırnak içine alır (virgül/tırnak/satır sonu varsa). */
-function csvAlan(deger: unknown): string {
-  const s = deger === null || deger === undefined ? "" : String(deger);
-  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-  return s;
-}
 
 /**
  * Tüm faturaların (istenirse tek bir yıla filtrelenmiş) CSV dökümü.

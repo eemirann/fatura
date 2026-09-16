@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server";
+import { yoneticiDegilse } from "@/lib/supabase/rol";
 import { sonOdemeTarihi } from "@/lib/format";
 import { wahaAktifMi, wahaMesajGonder } from "@/lib/waha";
 
@@ -27,6 +28,9 @@ export async function faturaKaydet(
   _prev: ActionSonuc,
   fd: FormData,
 ): Promise<ActionSonuc> {
+  const yetkisiz = await yoneticiDegilse();
+  if (yetkisiz) return yetkisiz;
+
   const unitId = String(fd.get("unit_id") ?? "");
   const donem = String(fd.get("donem") ?? "");
   if (!GECERLI_DONEM.test(donem)) return { hata: "Geçersiz dönem." };
@@ -123,6 +127,9 @@ export async function gonderildiIsaretle(
   _prev: ActionSonuc,
   fd: FormData,
 ): Promise<ActionSonuc> {
+  const yetkisiz = await yoneticiDegilse();
+  if (yetkisiz) return yetkisiz;
+
   const faturaId = String(fd.get("fatura_id") ?? "");
   const unitId = String(fd.get("unit_id") ?? "");
 
@@ -153,6 +160,9 @@ export async function incelendiIsaretle(
   _prev: ActionSonuc,
   fd: FormData,
 ): Promise<ActionSonuc> {
+  const yetkisiz = await yoneticiDegilse();
+  if (yetkisiz) return yetkisiz;
+
   const faturaId = String(fd.get("fatura_id") ?? "");
   const unitId = String(fd.get("unit_id") ?? "");
 
@@ -177,6 +187,9 @@ export async function eldeOdendiIsaretle(
   _prev: ActionSonuc,
   fd: FormData,
 ): Promise<ActionSonuc> {
+  const yetkisiz = await yoneticiDegilse();
+  if (yetkisiz) return yetkisiz;
+
   const faturaId = String(fd.get("fatura_id") ?? "");
   const unitId = String(fd.get("unit_id") ?? "");
 
@@ -198,6 +211,9 @@ export async function odemeyiGeriAl(
   _prev: ActionSonuc,
   fd: FormData,
 ): Promise<ActionSonuc> {
+  const yetkisiz = await yoneticiDegilse();
+  if (yetkisiz) return yetkisiz;
+
   const faturaId = String(fd.get("fatura_id") ?? "");
   const unitId = String(fd.get("unit_id") ?? "");
 

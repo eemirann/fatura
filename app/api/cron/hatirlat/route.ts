@@ -20,12 +20,13 @@ const TEKRAR_ARALIGI_GUN = 3;
  * yol yok, bu isteğe bağlı bir üst katman.
  */
 export async function GET(request: Request) {
+  // Fail-closed: CRON_SECRET tanımlı değilse istek reddedilir. Aksi hâlde
+  // değişkeni kurulumda atlamak, uç noktayı herkese açık bırakır — çağıran
+  // herkes vadesi geçmiş tüm kiracılara WhatsApp hatırlatması yağdırabilirdi.
+  // (Aynı kalıp: app/api/whatsapp-webhook/route.ts)
   const beklenenSir = process.env.CRON_SECRET;
-  if (beklenenSir) {
-    const yetki = request.headers.get("authorization");
-    if (yetki !== `Bearer ${beklenenSir}`) {
-      return NextResponse.json({ hata: "Yetkisiz." }, { status: 401 });
-    }
+  if (!beklenenSir || request.headers.get("authorization") !== `Bearer ${beklenenSir}`) {
+    return NextResponse.json({ hata: "Yetkisiz." }, { status: 401 });
   }
 
   if (!wahaAktifMi()) {

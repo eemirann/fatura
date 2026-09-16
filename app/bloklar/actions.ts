@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server";
+import { yoneticiDegilse } from "@/lib/supabase/rol";
 
 export type ActionSonuc = { hata?: string };
 
@@ -15,6 +16,9 @@ function bosOlabilir(fd: FormData, ad: string): string | null {
 }
 
 export async function blokEkle(_prev: ActionSonuc, fd: FormData): Promise<ActionSonuc> {
+  const yetkisiz = await yoneticiDegilse();
+  if (yetkisiz) return yetkisiz;
+
   const ad = metin(fd, "ad");
   if (!ad) return { hata: "Blok adı boş olamaz." };
 
@@ -30,6 +34,9 @@ export async function blokEkle(_prev: ActionSonuc, fd: FormData): Promise<Action
 }
 
 export async function blokSil(_prev: ActionSonuc, fd: FormData): Promise<ActionSonuc> {
+  const yetkisiz = await yoneticiDegilse();
+  if (yetkisiz) return yetkisiz;
+
   const id = metin(fd, "id");
   const supabase = await getServerSupabase();
 
@@ -53,6 +60,9 @@ export async function blokSil(_prev: ActionSonuc, fd: FormData): Promise<ActionS
 }
 
 export async function daireEkle(_prev: ActionSonuc, fd: FormData): Promise<ActionSonuc> {
+  const yetkisiz = await yoneticiDegilse();
+  if (yetkisiz) return yetkisiz;
+
   const block_id = metin(fd, "block_id");
   const kapi_no = metin(fd, "kapi_no");
   if (!kapi_no) return { hata: "Kapı no boş olamaz." };
@@ -86,6 +96,9 @@ export async function daireEkle(_prev: ActionSonuc, fd: FormData): Promise<Actio
 }
 
 export async function daireGuncelle(_prev: ActionSonuc, fd: FormData): Promise<ActionSonuc> {
+  const yetkisiz = await yoneticiDegilse();
+  if (yetkisiz) return yetkisiz;
+
   const id = metin(fd, "id");
   const kapi_no = metin(fd, "kapi_no");
   if (!kapi_no) return { hata: "Kapı no boş olamaz." };
@@ -118,6 +131,9 @@ export async function daireGuncelle(_prev: ActionSonuc, fd: FormData): Promise<A
 }
 
 export async function daireSil(_prev: ActionSonuc, fd: FormData): Promise<ActionSonuc> {
+  const yetkisiz = await yoneticiDegilse();
+  if (yetkisiz) return yetkisiz;
+
   const id = metin(fd, "id");
   const supabase = await getServerSupabase();
 

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { durumHesapla, ilgilenmeliMi } from "../lib/durum.ts";
+import { durumHesapla, ilgilenmeliMi, panelGrubu } from "../lib/durum.ts";
 import { sonOdemeTarihi, waTelefon, donemKaydir } from "../lib/format.ts";
 
 const BUGUN = "2026-08-19";
@@ -98,4 +98,49 @@ test("telefon wa.me biçimine normalize edilir", () => {
   assert.equal(waTelefon("00905321112233"), "905321112233");
   assert.equal(waTelefon("123"), null);
   assert.equal(waTelefon(null), null);
+});
+
+// --------------------------------------------------- panel sekmesi kovaları
+
+test("ödenmiş durumlar ödeyen kovasına girer", () => {
+  assert.equal(panelGrubu("odendi"), "odeyen");
+  assert.equal(panelGrubu("odendi_incelenmedi"), "odeyen");
+});
+
+test("açık faturalar ödemeyen kovasına girer", () => {
+  assert.equal(panelGrubu("bekliyor"), "odemeyen");
+  assert.equal(panelGrubu("gecikti"), "odemeyen");
+});
+
+test("tutarı uyuşmayan fatura ödeme sayılmaz", () => {
+  // Dekont gelmiştir ama fatura kapanmadığı için hâlâ takip edilmeli.
+  assert.equal(panelGrubu("uyusmadi"), "odemeyen");
+});
+
+test("faturası girilmemiş ve taslak daireler ayrı kovada", () => {
+  assert.equal(panelGrubu("yok"), "faturasiz");
+  assert.equal(panelGrubu("taslak"), "faturasiz");
+});
+
+test("her durum kodu tam olarak bir kovaya düşer", () => {
+  const kodlar = [
+    "yok",
+    "taslak",
+    "bekliyor",
+    "gecikti",
+    "uyusmadi",
+    "odendi_incelenmedi",
+    "odendi",
+  ] as const;
+  const kovalar = kodlar.map(panelGrubu);
+  assert.equal(kovalar.length, 7);
+  assert.ok(kovalar.every((k) => ["odeyen", "odemeyen", "faturasiz"].includes(k)));
+  // Sekme sayılarının toplamı daire sayısına eşit olmalı: hiçbir kod
+  // birden fazla kovaya girmiyor, hiçbiri de dışarıda kalmıyor.
+  assert.equal(
+    kovalar.filter((k) => k === "odeyen").length +
+      kovalar.filter((k) => k === "odemeyen").length +
+      kovalar.filter((k) => k === "faturasiz").length,
+    7,
+  );
 });

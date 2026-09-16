@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server";
+import { yoneticiDegilse } from "@/lib/supabase/rol";
 import { sonOdemeTarihi } from "@/lib/format";
 
 export type ActionSonuc = { hata?: string; basari?: string };
@@ -28,6 +29,9 @@ export async function topluKalemUygula(
   _prev: ActionSonuc,
   fd: FormData,
 ): Promise<ActionSonuc> {
+  const yetkisiz = await yoneticiDegilse();
+  if (yetkisiz) return yetkisiz;
+
   const donemAy = String(fd.get("donem") ?? "");
   if (!GECERLI_DONEM_AY.test(donemAy)) return { hata: "Geçersiz dönem." };
   const donem = `${donemAy}-01`;

@@ -2,21 +2,26 @@ import Link from "next/link";
 import UstMenu from "@/components/ust-menu";
 import DonemSecici from "@/components/donem-secici";
 import { panelVerisi, type DaireKarti } from "@/lib/veri";
-import { durumHesapla, ilgilenmeliMi, type DurumKodu } from "@/lib/durum";
+import PanelSekmeleri, { type PanelFiltresi } from "@/components/panel-sekmeleri";
+import { durumHesapla, ilgilenmeliMi, panelGrubu, type DurumKodu } from "@/lib/durum";
 import { donemAnahtari, donemEtiketi, isoGun, para } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
 const GECERLI_DONEM = /^\d{4}-\d{2}-01$/;
+const GECERLI_FILTRELER: PanelFiltresi[] = ["hepsi", "odeyen", "odemeyen", "faturasiz"];
 
 export default async function PanelPage({
   searchParams,
 }: {
-  searchParams: Promise<{ donem?: string }>;
+  searchParams: Promise<{ donem?: string; filtre?: string }>;
 }) {
-  const { donem: istenenDonem } = await searchParams;
+  const { donem: istenenDonem, filtre: istenenFiltre } = await searchParams;
   const donem =
     istenenDonem && GECERLI_DONEM.test(istenenDonem) ? istenenDonem : donemAnahtari();
+  const filtre: PanelFiltresi = GECERLI_FILTRELER.includes(istenenFiltre as PanelFiltresi)
+    ? (istenenFiltre as PanelFiltresi)
+    : "hepsi";
 
   const bloklar = await panelVerisi(donem);
   const bugun = isoGun();
@@ -25,6 +30,19 @@ export default async function PanelPage({
   const durumlar = daireler.map((d) => durumHesapla(d.invoice, bugun).kod);
   const sayac = (kod: DurumKodu) => durumlar.filter((k) => k === kod).length;
   const dikkat = durumlar.filter(ilgilenmeliMi).length;
+
+  // Sekme rozetleri her zaman filtrelenmemiş listeden sayılır — aksi hâlde
+  // bir sekmeye geçince diğerlerinin sayısı sıfırlanmış görünürdü.
+  const sekmeSayilari: Record<PanelFiltresi, number> = {
+    hepsi: daireler.length,
+    odeyen: durumlar.filter((k) => panelGrubu(k) === "odeyen").length,
+    odemeyen: durumlar.filter((k) => panelGrubu(k) === "odemeyen").length,
+    faturasiz: durumlar.filter((k) => panelGrubu(k) === "faturasiz").length,
+  };
+
+  /** Seçili sekmeye giren daireler. "hepsi" hiçbir şeyi elemez. */
+  const filtreyeUyuyor = (daire: DaireKarti) =>
+    filtre === "hepsi" || panelGrubu(durumHesapla(daire.invoice, bugun).kod) === filtre;
 
   const beklenenToplam = daireler.reduce((t, d) => t + Number(d.invoice?.toplam ?? 0), 0);
   const tahsilEdilen = daireler
@@ -72,6 +90,8 @@ export default async function PanelPage({
           <Ozet baslik="Vadesi geçen" deger={String(sayac("gecikti"))} vurgu="red" />
         </div>
 
+        <PanelSekmeleri aktif={filtre} donem={donem} sayilar={sekmeSayilari} />
+
         {bloklar.length === 0 ? (
           <p className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
             Henüz blok yok.{" "}
@@ -80,10 +100,16 @@ export default async function PanelPage({
             </Link>{" "}
             sayfasından başlayın.
           </p>
+        ) : filtre !== "hepsi" && sekmeSayilari[filtre] === 0 ? (
+          <p className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
+            Bu dönemde bu sekmeye giren daire yok.
+          </p>
         ) : (
           <div className="space-y-6">
             {bloklar.map((blok) => {
-              const aktifDaireler = blok.units.filter((d) => d.aktif);
+              const aktifDaireler = blok.units.filter((d) => d.aktif && filtreyeUyuyor(d));
+              // Filtre uygulanmışken boş kalan blok başlığını hiç gösterme.
+              if (filtre !== "hepsi" && aktifDaireler.length === 0) return null;
               return (
                 <section key={blok.id}>
                   <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 uppercase">

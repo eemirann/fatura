@@ -105,3 +105,32 @@ function durumKodu(
 export function ilgilenmeliMi(kod: DurumKodu): boolean {
   return kod === "gecikti" || kod === "uyusmadi" || kod === "odendi_incelenmedi";
 }
+
+/**
+ * Panel sekmelerinin ("Ödeyenler / Ödemeyenler / Faturasız") kovaları.
+ * Renk kuralı gibi bu da tek kaynak burasıdır.
+ */
+export type PanelGrubu = "odeyen" | "odemeyen" | "faturasiz";
+
+/**
+ * Bir durum kodunu sekme kovasına yerleştirir.
+ *
+ * "faturasiz" kovası şart: faturası hiç girilmemiş ya da taslakta kalmış
+ * daireler aksi hâlde iki sekmeden de düşer ve gözden kaybolurdu.
+ * "uyusmadi" ödeme sayılmaz — dekont gelmiştir ama tutar tutmadığı için
+ * fatura hâlâ kapanmamıştır.
+ */
+export function panelGrubu(kod: DurumKodu): PanelGrubu {
+  switch (kod) {
+    case "odendi":
+    case "odendi_incelenmedi":
+      return "odeyen";
+    case "bekliyor":
+    case "gecikti":
+    case "uyusmadi":
+      return "odemeyen";
+    case "yok":
+    case "taslak":
+      return "faturasiz";
+  }
+}

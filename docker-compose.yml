@@ -1,0 +1,74 @@
+# Sunucu tarafı servisler — üretim/VPS dağıtımı için.
+#
+#   waha    WhatsApp köprüsü (giden fatura mesajı, gelen dekont)
+#   dekont  Dekont okuma servisi (FastAPI + Tesseract OCR)
+#
+# Vercel'deki panel ikisine de dışarıdan HTTP ile ulaşır; bu yüzden iki servis
+# de public bir portta durur ve ikisi de kendi anahtarıyla korunur.
+#
+# Her müşteri kendi WhatsApp Business numarasıyla bunun ayrı bir kopyasını
+# çalıştırır (bkz. README "WhatsApp otomasyonu" bölümü). Ayağa kaldırmak için
+# aşağıdaki değişkenleri kendi değerlerinizle doldurup:
+#
+#   docker compose up -d
+#
+# WAHA oturum verisi `waha_data` volume'ünde kalıcı tutulur — container yeniden
+# başlasa da (VPS reboot, imaj güncellemesi vb.) QR'ı tekrar taratmanız
+# gerekmez. Dekont servisi durumsuzdur, volume istemez.
+
+services:
+  waha:
+    image: devlikeapro/waha
+    container_name: waha
+    restart: unless-stopped
+    # Disariya Caddy uzerinden HTTPS ile aciliyor; bu eslesme yalnizca
+    # sunucunun kendi icinden (ssh ile girip curl atmak gibi) erisim icin.
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      WHATSAPP_DEFAULT_ENGINE: NOWEB
+      WAHA_API_KEY: ${WAHA_API_KEY}
+      WAHA_DASHBOARD_USERNAME: ${WAHA_DASHBOARD_USERNAME}
+      WAHA_DASHBOARD_PASSWORD: ${WAHA_DASHBOARD_PASSWORD}
+      WHATSAPP_SWAGGER_USERNAME: ${WAHA_DASHBOARD_USERNAME}
+      WHATSAPP_SWAGGER_PASSWORD: ${WAHA_DASHBOARD_PASSWORD}
+    volumes:
+      - waha_data:/app/.sessions
+
+  dekont:
+    build: ./python-dekont-servisi
+    container_name: dekont
+    restart: unless-stopped
+    # Bkz. waha: public erisim Caddy'den, bu yalnizca sunucu ici.
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      # Zorunlu: tanımlı değilse servis hiçbir istek kabul etmez (fail-closed).
+      # Vercel'deki DEKONT_SERVICE_KEY ile birebir aynı değer olmalı.
+      DEKONT_SERVICE_KEY: ${DEKONT_SERVICE_KEY:?DEKONT_SERVICE_KEY tanimlanmali}
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Ornek: ornek.com  -> dekont.ornek.com ve waha.ornek.com yayina cikar
+      DOMAIN: "${DOMAIN:?DOMAIN tanimlanmali - ornek.com gibi}"
+      ACME_EMAIL: "${ACME_EMAIL:?ACME_EMAIL tanimlanmali - sertifika uyarilari buraya gider}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Sertifikalar burada kalici: yeniden baslatinca Let's Encrypt'ten
+      # tekrar sertifika istenmez (rate limit'e takilmamak icin onemli).
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - waha
+      - dekont
+
+volumes:
+  waha_data:
+  caddy_data:
+  caddy_config:

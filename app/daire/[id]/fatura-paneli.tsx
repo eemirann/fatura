@@ -28,6 +28,7 @@ type FaturaOzeti = {
   son_odeme_tarihi: string;
   gonderildi_at: string | null;
   incelendi_at: string | null;
+  son_hatirlatma_at: string | null;
   public_token: string;
   items: { baslik: string; tutar: number }[];
 };
@@ -347,6 +348,11 @@ function GonderimPaneli({
             <span>Henüz gönderilmedi.</span>
           )}
           <span>Son ödeme: {tarihTR(fatura.son_odeme_tarihi)}</span>
+          {fatura.son_hatirlatma_at && (
+            <span title="Vadesi geçtiği için otomatik hatırlatma gönderildi">
+              ⏰ Son hatırlatma: {tarihTR(fatura.son_hatirlatma_at)}
+            </span>
+          )}
 
           <div className="ml-auto flex items-center gap-2">
             {fatura.durum === "odendi" ? (
