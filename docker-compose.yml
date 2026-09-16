@@ -1,10 +1,13 @@
 # Sunucu tarafı servisler — üretim/VPS dağıtımı için.
 #
-#   waha    WhatsApp köprüsü (giden fatura mesajı, gelen dekont)
-#   dekont  Dekont okuma servisi (FastAPI + Tesseract OCR)
+#   panel       Next.js paneli (Vercel yerine burada koşar)
+#   waha        WhatsApp köprüsü (giden fatura mesajı, gelen dekont)
+#   dekont      Dekont okuma servisi (FastAPI + Tesseract OCR)
+#   hatirlatma  Günlük hatırlatmayı tetikleyen zamanlayıcı
+#   caddy       TLS sonlandırma, üçünün önünde
 #
-# Vercel'deki panel ikisine de dışarıdan HTTP ile ulaşır; bu yüzden iki servis
-# de public bir portta durur ve ikisi de kendi anahtarıyla korunur.
+# Panel, waha ve dekont'a container ağı üzerinden ulaşır; dışarıya tek kapı
+# Caddy'dir. Veritabanı ve dosya deposu Supabase'de, bu sunucuda durum yok.
 #
 # Her müşteri kendi WhatsApp Business numarasıyla bunun ayrı bir kopyasını
 # çalıştırır (bkz. README "WhatsApp otomasyonu" bölümü). Ayağa kaldırmak için
@@ -47,6 +50,47 @@ services:
       # Vercel'deki DEKONT_SERVICE_KEY ile birebir aynı değer olmalı.
       DEKONT_SERVICE_KEY: ${DEKONT_SERVICE_KEY:?DEKONT_SERVICE_KEY tanimlanmali}
 
+  panel:
+    build: .
+    container_name: panel
+    restart: unless-stopped
+    # Disariya Caddy uzerinden; bu eslesme yalnizca sunucu ici hata ayiklama.
+    ports:
+      - "127.0.0.1:3100:3100"
+    environment:
+      # Panelin kendi genel adresi — kiraciya giden dekont linki ve Supabase
+      # davet yonlendirmesi bundan uretilir. Calisma aninda okunur, imaja
+      # gomulu degildir (bkz. lib/site-url.ts).
+      SITE_URL: "https://panel.${DOMAIN:?DOMAIN tanimlanmali - ornek.com gibi}"
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?tanimlanmali}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?tanimlanmali}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?tanimlanmali}
+      DEKONT_SERVIS_URL: http://dekont:8000
+      DEKONT_SERVICE_KEY: ${DEKONT_SERVICE_KEY:?DEKONT_SERVICE_KEY tanimlanmali}
+      CRON_SECRET: ${CRON_SECRET:?CRON_SECRET tanimlanmali}
+      WAHA_URL: ${WAHA_URL-http://waha:3000}
+      WAHA_API_KEY: ${WAHA_API_KEY}
+      WAHA_SESSION: ${WAHA_SESSION-default}
+      WAHA_WEBHOOK_SECRET: ${WAHA_WEBHOOK_SECRET}
+      INGEST_API_KEY: ${INGEST_API_KEY-}
+    depends_on:
+      - dekont
+
+  hatirlatma:
+    image: alpine:3
+    container_name: hatirlatma
+    restart: unless-stopped
+    environment:
+      CRON_SECRET: ${CRON_SECRET:?CRON_SECRET tanimlanmali}
+      PANEL_URL: http://panel:3100
+      # Varsayilan her gun 09:00 (container saati UTC'dir).
+      CRON_SAATI: ${CRON_SAATI-0 9 * * *}
+    volumes:
+      - ./scripts/hatirlatma-zamanlayici.sh:/hatirlatma.sh:ro
+    command: ["sh", "/hatirlatma.sh"]
+    depends_on:
+      - panel
+
   caddy:
     image: caddy:2-alpine
     container_name: caddy
@@ -65,6 +109,7 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
+      - panel
       - waha
       - dekont
 

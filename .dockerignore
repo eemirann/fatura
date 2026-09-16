@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+.vercel
+.env
+.env.local
+.env*.local
+*.tsbuildinfo
+python-dekont-servisi
+Dockerfile
+.dockerignore
+docker-compose.yml
+Caddyfile
+README.md
+tests

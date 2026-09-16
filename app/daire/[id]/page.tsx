@@ -7,6 +7,7 @@ import { donemAnahtari, donemEtiketi, isoGun, para, tarihTR } from "@/lib/format
 import { dekontLinki, mesajOlustur, whatsappLinki } from "@/lib/whatsapp";
 import { wahaAktifMi } from "@/lib/waha";
 import { kullaniciRolu } from "@/lib/supabase/rol.ts";
+import { siteUrl } from "@/lib/site-url.ts";
 import { toplananTutar as toplananTutarHesapla } from "@/lib/esles.ts";
 import FaturaPaneli from "./fatura-paneli";
 import DekontListesi from "./dekont-listesi";
@@ -130,9 +131,9 @@ export default async function DairePage({
           </p>
         )}
 
-        {!process.env.NEXT_PUBLIC_SITE_URL && (
+        {!siteUrl() && (
           <p className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
-            <strong>NEXT_PUBLIC_SITE_URL</strong> ayarlanmamış. Mesajdaki dekont
+            <strong>SITE_URL</strong> ayarlanmamış. Mesajdaki dekont
             bağlantısı eksik gider ve kiracı dosya yükleyemez. Ortam
             değişkenlerine sitenin tam adresini ekleyin.
           </p>

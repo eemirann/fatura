@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server.ts";
 import { getAdminSupabase } from "@/lib/supabase/admin.ts";
 import { yoneticiDegilse } from "@/lib/supabase/rol.ts";
+import { siteUrl } from "@/lib/site-url.ts";
 
 export type ActionSonuc = { hata?: string; basari?: string };
 
@@ -25,13 +26,13 @@ export async function kullaniciDavetEt(
     return { hata: "Geçersiz rol." };
   }
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
-  if (!siteUrl) return { hata: "NEXT_PUBLIC_SITE_URL tanımlı değil." };
+  const taban = siteUrl();
+  if (!taban) return { hata: "SITE_URL tanımlı değil." };
 
   const admin = getAdminSupabase();
   const { error } = await admin.auth.admin.inviteUserByEmail(eposta, {
     data: { rol },
-    redirectTo: `${siteUrl}/auth/callback`,
+    redirectTo: `${taban}/auth/callback`,
   });
 
   if (error) return { hata: error.message };

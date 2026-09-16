@@ -11,7 +11,21 @@
 	email {$ACME_EMAIL}
 }
 
-# Dekont okuma servisi — Vercel'deki panel buraya istek atar.
+# Panel — kullanicinin tarayicidan girdigi adres.
+panel.{$DOMAIN} {
+	reverse_proxy panel:3100
+
+	# Fatura kalemleri ve dekont yuklemesi server action uzerinden gidiyor;
+	# next.config.ts'teki 12mb bodySizeLimit ile ayni pay.
+	request_body {
+		max_size 12MB
+	}
+
+	encode gzip
+}
+
+# Dekont okuma servisi — panel container agi uzerinden ulasir, bu alt alan adi
+# disaridan (ornegin n8n) cagirmak isteyebilecekler icin acik durur.
 dekont.{$DOMAIN} {
 	reverse_proxy dekont:8000 {
 		# OCR uzun sürebiliyor; panel tarafı zaten 55sn'de vazgeçiyor

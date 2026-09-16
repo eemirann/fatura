@@ -1,5 +1,6 @@
 import type { InvoiceItem } from "./types.ts";
 import { donemEtiketi, para, tarihTR, waTelefon } from "./format.ts";
+import { siteUrl } from "./site-url.ts";
 
 export type MesajGirdisi = {
   sablon: string;
@@ -70,6 +71,5 @@ export function whatsappLinki(telefon: string | null, mesaj: string): string | n
 
 /** Kiracının dekont yükleyeceği tam adres. */
 export function dekontLinki(token: string): string {
-  const taban = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/+$/, "");
-  return `${taban}/y/${token}`;
+  return `${siteUrl()}/y/${token}`;
 }

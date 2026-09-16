@@ -116,9 +116,13 @@ uyarı verip durur).
 cp .env.example .env.local
 ```
 
-`.env.local` dosyasını yukarıda aldığın değerlerle doldur. `NEXT_PUBLIC_SITE_URL`
-yerel çalışırken `http://localhost:3100` kalabilir; yayına aldığında Vercel
-adresini yazacaksın (kiracıya giden dekont linki buradan üretiliyor).
+`.env.local` dosyasını yukarıda aldığın değerlerle doldur. `SITE_URL` yerel
+çalışırken `http://localhost:3100` kalabilir; yayına aldığında sunucunun
+adresini yazacaksın (kiracıya giden dekont linki buradan üretiliyor — sunucuda
+bu değeri compose kendisi üretir).
+
+`DEKONT_SERVICE_KEY` ve `CRON_SECRET` yerelde de dolu olmalı: ikisi de
+fail-closed, boş bırakılırsa dekont okuma ve hatırlatma ucu istek kabul etmez.
 
 ### 4. Çalıştır
 
@@ -136,23 +140,89 @@ npm run dev
 
 ---
 
-## Yayına alma (Vercel)
+## Yayına alma (kendi sunucunuz)
 
-```bash
-npx vercel
+Panel Vercel'de değil, WAHA ve dekont servisiyle aynı VPS'te koşar. Gerekçe:
+dekont okuma servisi Vercel'de zaten çalışamıyor (sistemde Tesseract ikilisi
+şart), yani bir sunucuya ihtiyaç var. Paneli de oraya koymak ek maliyet
+getirmiyor ve her şey tek kutuda toplanıyor.
+
+> Vercel'in ücretsiz **Hobby** planı ticari kullanıma kapalı — "siteyi yapmak
+> ya da barındırmak için para almak" tanımın içinde. Bu paneli bir müşteriye
+> satıyorsanız Hobby uygun değildir; Pro'ya geçmek yerine kendi sunucunuzda
+> barındırmak hem kurallara uygun hem daha ucuz.
+
+### Sunucu gereksinimleri
+
+| | |
+|---|---|
+| Sanallaştırma | **KVM / VMware ESXi** — OpenVZ/LXC'de Docker düzgün çalışmaz |
+| Kaynak | 2 vCPU / 4 GB RAM / 40 GB disk |
+| Ağ | 1 public IPv4, **80 ve 443 portları açık** |
+| İşletim sistemi | Ubuntu 22.04 veya 24.04 |
+| Alan adı | Şart — Let's Encrypt IP adresine sertifika vermiyor |
+
+Veritabanı ve dekont dosyaları Supabase'de durur; sunucuda kalıcı veri yalnızca
+WhatsApp oturumu (`waha_data`) ve TLS sertifikalarıdır (`caddy_data`).
+
+### DNS
+
+Üç A kaydı, hepsi sunucunun IP'sine:
+
+```
+panel.<alanadi>    -> <sunucu-ip>
+waha.<alanadi>     -> <sunucu-ip>
+dekont.<alanadi>   -> <sunucu-ip>
 ```
 
-Vercel panelinden **Settings → Environment Variables** altına `.env.local`'daki
-tüm değişkenleri ekle. Yerel değerleriyle bırakılmaması gereken üçü:
+### Kurulum
 
-| Değişken | Üretimdeki değeri |
-|---|---|
-| `NEXT_PUBLIC_SITE_URL` | Vercel adresiniz (`https://xxx.vercel.app`) — kiracıya giden dekont linki buradan üretiliyor |
-| `DEKONT_SERVIS_URL` | VPS'inizdeki dekont servisi (`https://dekont.<alanadi>`) — `localhost` kalırsa Vercel ulaşamaz |
-| `CRON_SECRET` | Rastgele bir değer; tanımsızsa hatırlatma ucu tüm istekleri reddeder |
+```bash
+# 1) Docker
+curl -fsSL https://get.docker.com | sh
 
-Yayına aldıktan sonra telefondan bir kez gerçek dekontla dene: mobilde dosya
-seçici ve kamera akışı çalışıyor mu diye.
+# 2) Projeyi al
+git clone <repo-adresiniz> /opt/fatura && cd /opt/fatura
+
+# 3) Ortam degiskenleri
+cp .env.example .env
+nano .env        # Supabase anahtarlari + asagidaki uc deger
+
+openssl rand -hex 32   # DEKONT_SERVICE_KEY
+openssl rand -hex 32   # CRON_SECRET
+openssl rand -hex 16   # WAHA_API_KEY
+
+# 4) Ayaga kaldir
+docker compose up -d
+```
+
+`.env` dosyasına ek olarak şunlar gerekir (compose bunları okur):
+
+```
+DOMAIN=alanadiniz.com
+ACME_EMAIL=siz@alanadiniz.com
+WAHA_DASHBOARD_USERNAME=admin
+WAHA_DASHBOARD_PASSWORD=<rastgele>
+```
+
+`SITE_URL`'i elle yazmanıza gerek yok — compose onu `https://panel.$DOMAIN`
+olarak kendisi üretir.
+
+### Sonra
+
+1. `https://waha.<alanadi>/dashboard/` → `default` oturumunu başlatıp QR'ı
+   müşterinin WhatsApp Business'ından taratın.
+2. WAHA webhook'unu ayarlayın (aşağıdaki WAHA bölümü), adres artık
+   `https://panel.<alanadi>/api/whatsapp-webhook`.
+3. Supabase → **Authentication → URL Configuration → Redirect URLs** listesine
+   `https://panel.<alanadi>/auth/callback` ekleyin, yoksa davet akışı kırılır.
+4. Telefondan gerçek bir dekontla bir kez deneyin.
+
+### Güncelleme
+
+```bash
+cd /opt/fatura && git pull && docker compose up -d --build
+```
 
 ---
 
@@ -161,9 +231,9 @@ seçici ve kamera akışı çalışıyor mu diye.
 | Kalem | Tutar |
 |---|---|
 | Supabase | Ücretsiz katman bu ölçekte fazlasıyla yeter |
-| Vercel | Ücretsiz katman yeter |
 | Dekont okuma (regex + Tesseract OCR) | 0 ₺ — AI/API çağrısı yok |
-| VPS (WAHA + dekont servisi) | En küçük paket yeter; ikisi aynı sunucuda koşar |
+| VPS (panel + WAHA + dekont + Caddy) | Müşteri başına tek sunucu; 2 vCPU / 4 GB yeterli |
+| Alan adı | Yılda bir kez, sertifika için gerekli |
 
 WhatsApp otomasyonunu kullanmıyorsanız (`WAHA_URL` boş) VPS yine de gerekir:
 dekont okuma servisi Vercel'de çalışamıyor. Otomatik okumadan da vazgeçerseniz
@@ -196,7 +266,10 @@ lib/esles.ts        Dekont tutarı ↔ fatura tutarı eşleştirme kuralı (saf 
 lib/dekont-servis.ts   Dekont okuma servisine HTTP çağrısı (PDF + görsel)
 python-dekont-servisi/ FastAPI mikroservisi — regex + OCR ile dekont okuma
 python-dekont-servisi/Dockerfile  Tesseract + tur dil paketi içeren imaj
-docker-compose.yml  VPS'te koşan üç servis: caddy + waha + dekont
+Dockerfile          Next.js paneli için imaj (standalone çıktı)
+docker-compose.yml  VPS'te koşan beş servis: panel + waha + dekont + hatirlatma + caddy
+lib/site-url.ts     Panelin genel adresi — çalışma anında okunur, imaja gömülmez
+scripts/hatirlatma-zamanlayici.sh  Günlük hatırlatmayı tetikleyen crond betiği
 Caddyfile           Caddy reverse proxy + otomatik Let's Encrypt sertifikası
 lib/whatsapp.ts     Mesaj şablonu doldurma ve wa.me linki
 lib/waha.ts         WAHA istemcisi — otomatik mesaj gönderimi, gelen medya indirme
@@ -318,27 +391,40 @@ bunları formül olarak çalıştırmasın diye (`lib/csv.ts`). Tırnak görünt
 ## Otomatik hatırlatma
 
 Vadesi geçmiş ve hâlâ ödenmemiş faturalara günde bir kez WhatsApp hatırlatması
-gider. Zamanlama `vercel.json`'daki cron ile tanımlı (her gün 09:00 UTC),
-işi `app/api/cron/hatirlat` yapar. Aynı faturaya 3 günden sık hatırlatma
-gitmez (`son_hatirlatma_at` kolonu); son gönderim tarihi daire detayındaki
+gider. İşi `app/api/cron/hatirlat` yapar; aynı faturaya 3 günden sık hatırlatma
+gitmez (`son_hatirlatma_at` kolonu) ve son gönderim tarihi daire detayındaki
 fatura kartında görünür.
+
+**Zamanlayıcı `hatirlatma` container'ıdır.** Alpine'ın busybox `crond`'u her gün
+09:00'da (container saati UTC) paneli `CRON_SECRET` ile çağırır — betik
+`scripts/hatirlatma-zamanlayici.sh`. Saati değiştirmek için `.env`'e:
+
+```
+CRON_SAATI=30 6 * * *
+```
+
+> `vercel.json` içindeki cron tanımı repoda duruyor ama **kendi sunucunuzda
+> çalışmaz**; yalnızca Vercel'e geri dönerseniz devreye girer. VPS'te işi
+> yapan `hatirlatma` servisidir.
 
 **Gerekli ayarlar:**
 
-1. `CRON_SECRET` üret ve hem `.env.local`'e hem Vercel ortam değişkenlerine
-   ekle: `openssl rand -hex 32`. **Tanımlı değilse uç nokta tüm istekleri
-   reddeder** — bu bilinçli: değişkeni unutmak hatırlatma ucunu herkese açık
-   bırakmasın diye.
+1. `CRON_SECRET` üretin (`openssl rand -hex 32`) ve `.env`'e yazın.
+   **Tanımlı değilse uç nokta tüm istekleri reddeder** — bilinçli: değişkeni
+   unutmak hatırlatma ucunu herkese açık bırakmasın diye.
 2. `WAHA_URL` dolu olmalı. WAHA yapılandırılmamışsa mesaj atacak bir yol yok;
-   cron hiçbir şey yapmadan `{"atlandi":"waha-aktif-degil"}` döner.
+   iş hiçbir şey yapmadan `{"atlandi":"waha-aktif-degil"}` döner.
 
-> Vercel ücretsiz (Hobby) katmanında cron günde bir kez çalışır ve tam
-> 09:00'da değil, o saat civarında tetiklenir.
-
-Elle denemek için:
+Zamanlayıcının çalıştığını görmek için:
 
 ```bash
-curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3100/api/cron/hatirlat
+docker compose logs -f hatirlatma
+```
+
+Beklemeden elle tetiklemek için:
+
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:3100/api/cron/hatirlat
 ```
 
 ---
@@ -404,12 +490,14 @@ elle sertifika yönetmezsiniz. `Caddyfile` iki alt alan adını yayına çıkar�
 
 | Adres | Nereye gider |
 |---|---|
+| `https://panel.<alanadi>` | Panelin kendisi — kullanıcı buraya girer |
 | `https://dekont.<alanadi>` | Dekont okuma servisi (Vercel buraya istek atar) |
 | `https://waha.<alanadi>` | WAHA API'si ve panosu |
 
 **Gereken:**
 
-1. İki A kaydı, sunucunun IP'sine: `dekont.<alanadi>` ve `waha.<alanadi>`.
+1. Üç A kaydı, sunucunun IP'sine: `panel.<alanadi>`, `dekont.<alanadi>` ve
+   `waha.<alanadi>`.
 2. 80 ve 443 portları dışarıya açık. 80 yalnızca sertifika doğrulaması ve
    HTTPS'e yönlendirme için kullanılır.
 3. `.env` içinde `DOMAIN` ve `ACME_EMAIL` (bkz. kurulum bölümü).
