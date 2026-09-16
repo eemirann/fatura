@@ -53,7 +53,12 @@ services:
       DEKONT_SERVICE_KEY: ${DEKONT_SERVICE_KEY:?DEKONT_SERVICE_KEY tanimlanmali}
 
   panel:
-    build: .
+    build:
+      context: .
+      args:
+        # Tarayiciya ulasmasi gerektigi icin derleme aninda gomulur.
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?tanimlanmali}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?tanimlanmali}
     container_name: panel
     restart: unless-stopped
     # Disariya Caddy uzerinden; bu eslesme yalnizca sunucu ici hata ayiklama.

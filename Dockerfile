@@ -5,9 +5,12 @@
 # Next çalışmak için gereken node_modules'ü .next/standalone içine kendisi
 # kopyalıyor.
 #
-# ÖNEMLİ: SITE_URL burada derleme argümanı DEĞİL, çalışma anı değişkenidir
-# (bkz. lib/site-url.ts). Bu sayede aynı imaj farklı müşterilerde farklı
-# alan adlarıyla çalışır — müşteri başına yeniden derleme gerekmez.
+# SITE_URL burada derleme argümanı DEĞİL, çalışma anı değişkenidir (bkz.
+# lib/site-url.ts) — alan adı imaja gömülmez.
+#
+# Ama NEXT_PUBLIC_SUPABASE_* değerleri tarayıcıya ulaşmak zorunda olduğu için
+# derleme anında gömülür. Her müşterinin kendi Supabase projesi olacağından
+# imaj müşteriye özeldir; zaten her müşteri kendi sunucusunda derliyor.
 
 # ---------------------------------------------------------------- bagimliliklar
 FROM node:22-alpine AS deps
@@ -21,6 +24,18 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+
+# Bu iki deger tarayiciya ulasmak zorunda (lib/supabase/client.ts), dolayisiyla
+# Next onlari derleme aninda pakete gomer — calisma aninda verilemezler.
+# Verilmezlerse istemci paketine "undefined" gomulur ve tarayicidan giris
+# sessizce kirilir (sunucu tarafi calismaya devam ettigi icin fark edilmesi zor).
+# anon key zaten herkese acik olacak bir degerdir; veriyi RLS korur.
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+RUN test -n "$NEXT_PUBLIC_SUPABASE_URL" || (echo "HATA: NEXT_PUBLIC_SUPABASE_URL derleme argumani bos" && exit 1)
 RUN npm run build
 
 # ----------------------------------------------------------------------- calisma
