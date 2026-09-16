@@ -30,9 +30,11 @@ services:
       - "127.0.0.1:3001:3000"
     environment:
       WHATSAPP_DEFAULT_ENGINE: NOWEB
-      WAHA_API_KEY: ${WAHA_API_KEY}
-      WAHA_DASHBOARD_USERNAME: ${WAHA_DASHBOARD_USERNAME}
-      WAHA_DASHBOARD_PASSWORD: ${WAHA_DASHBOARD_PASSWORD}
+      # Hepsi zorunlu: WAHA artik Caddy uzerinden internete acik duruyor,
+      # anahtarsiz birakmak panoyu ve API'yi herkese acardi.
+      WAHA_API_KEY: ${WAHA_API_KEY:?WAHA_API_KEY tanimlanmali}
+      WAHA_DASHBOARD_USERNAME: ${WAHA_DASHBOARD_USERNAME:?WAHA_DASHBOARD_USERNAME tanimlanmali}
+      WAHA_DASHBOARD_PASSWORD: ${WAHA_DASHBOARD_PASSWORD:?WAHA_DASHBOARD_PASSWORD tanimlanmali}
       WHATSAPP_SWAGGER_USERNAME: ${WAHA_DASHBOARD_USERNAME}
       WHATSAPP_SWAGGER_PASSWORD: ${WAHA_DASHBOARD_PASSWORD}
     volumes:
@@ -69,9 +71,11 @@ services:
       DEKONT_SERVICE_KEY: ${DEKONT_SERVICE_KEY:?DEKONT_SERVICE_KEY tanimlanmali}
       CRON_SECRET: ${CRON_SECRET:?CRON_SECRET tanimlanmali}
       WAHA_URL: ${WAHA_URL-http://waha:3000}
-      WAHA_API_KEY: ${WAHA_API_KEY}
+      WAHA_API_KEY: ${WAHA_API_KEY:?WAHA_API_KEY tanimlanmali}
       WAHA_SESSION: ${WAHA_SESSION-default}
-      WAHA_WEBHOOK_SECRET: ${WAHA_WEBHOOK_SECRET}
+      # Bos birakilirsa webhook TUM istekleri reddeder, yani kiracinin
+      # sohbete attigi dekont sessizce dusmeye baslar.
+      WAHA_WEBHOOK_SECRET: ${WAHA_WEBHOOK_SECRET:?WAHA_WEBHOOK_SECRET tanimlanmali}
       INGEST_API_KEY: ${INGEST_API_KEY-}
     depends_on:
       - dekont
