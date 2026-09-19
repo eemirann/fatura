@@ -125,6 +125,40 @@ export default function DekontListesi({
   );
 }
 
+/**
+ * Dekontu satırın içinde gösterir — görsel `img`, PDF `iframe` ile.
+ * Amaç, her dekont için yeni sekme açmadan tutarı gözle doğrulayabilmek.
+ */
+function DekontOnizleme({ url, mime }: { url: string; mime: string }) {
+  const ortakSinif =
+    "w-full rounded-lg border border-slate-200 bg-slate-50";
+
+  if (mime.startsWith("image/")) {
+    return (
+      // Imzali adres 30 dakikalik ve bucket private; next/image'in optimizasyon
+      // katmanindan gecirmek anlamsiz, dogrudan gosteriyoruz.
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={url}
+        alt="Dekont"
+        className={`${ortakSinif} max-h-[70vh] object-contain`}
+      />
+    );
+  }
+
+  if (mime === "application/pdf") {
+    return (
+      <iframe
+        src={url}
+        title="Dekont"
+        className={`${ortakSinif} h-[70vh]`}
+      />
+    );
+  }
+
+  return null;
+}
+
 function DekontSatiri({
   dekont,
   beklenenTutar,
@@ -133,6 +167,12 @@ function DekontSatiri({
   beklenenTutar: number;
 }) {
   const stil = ESLESME_STIL[dekont.eslesme];
+  // Istek uzerine varsayilan acik: dekont sayfada dogrudan gorunur. Cok sayida
+  // dekont birikince sayfayi uzatmasin diye kapatilabiliyor.
+  const [acik, setAcik] = useState(true);
+  const onizlenebilir =
+    !!dekont.url &&
+    (dekont.mime.startsWith("image/") || dekont.mime === "application/pdf");
 
   return (
     <li className="p-4">
@@ -146,16 +186,33 @@ function DekontSatiri({
         </span>
 
         {dekont.url && (
-          <a
-            href={dekont.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="ml-auto rounded-lg border border-slate-300 px-3 py-1 text-sm hover:bg-slate-50"
-          >
-            Dekontu aç
-          </a>
+          <span className="ml-auto flex items-center gap-2">
+            {onizlenebilir && (
+              <button
+                type="button"
+                onClick={() => setAcik((a) => !a)}
+                className="rounded-lg border border-slate-300 px-3 py-1 text-sm hover:bg-slate-50"
+              >
+                {acik ? "Gizle" : "Göster"}
+              </button>
+            )}
+            <a
+              href={dekont.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-lg border border-slate-300 px-3 py-1 text-sm hover:bg-slate-50"
+            >
+              Yeni sekmede aç
+            </a>
+          </span>
         )}
       </div>
+
+      {onizlenebilir && acik && (
+        <div className="mt-3">
+          <DekontOnizleme url={dekont.url!} mime={dekont.mime} />
+        </div>
+      )}
 
       {dekont.eslesme === "unreadable" ? (
         <p className="mt-2 text-sm text-slate-600">
