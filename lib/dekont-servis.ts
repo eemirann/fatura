@@ -12,6 +12,14 @@ export const DekontSemasi = z.object({
   gonderen_ad: z.string().nullable(),
   banka: z.string().nullable(),
   aciklama: z.string(),
+  /**
+   * Dosyadan çıkarılan düz metin. Okuma başarısız olduğunda deseni
+   * düzeltebilmek için `ham_json` içinde saklanır — onsuz "hangi metinde
+   * aradı" sorusunu sonradan cevaplayamıyoruz. Alan isteğe bağlı: henüz
+   * güncellenmemiş bir dekont servisi bunu hiç göndermez, o durumda
+   * ayrıştırmanın kırılmaması gerekir.
+   */
+  ham_metin: z.string().nullable().optional(),
 });
 
 export type DekontOkuma = z.infer<typeof DekontSemasi>;

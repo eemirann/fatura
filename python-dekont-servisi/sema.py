@@ -38,3 +38,12 @@ class DekontSemasi(BaseModel):
             "okunabilir=true ise kısa bir özet yaz."
         ),
     )
+    ham_metin: Optional[str] = Field(
+        default=None,
+        description=(
+            "Dosyadan çıkarılan düz metin (PDF metni ya da OCR çıktısı). "
+            "Okuma başarısız olduğunda 'hangi metinde arandı' sorusunun tek "
+            "cevabı bu; onsuz düzeltilecek deseni bulmak mümkün değil. "
+            "Metin hiç çıkarılamadıysa null."
+        ),
+    )

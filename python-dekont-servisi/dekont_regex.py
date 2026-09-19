@@ -23,6 +23,11 @@ from sema import DekontSemasi
 MIN_METIN_UZUNLUGU = 20  # bunun altı "muhtemelen taranmış PDF" sayılır
 BOZUK_KARAKTER_ORANI = 0.02  # bunun üstü "font kodlaması bozuk" sayılır (OCR'a düşülür)
 
+# Ham metin, okuma başarısız olduğunda deseni düzeltebilmek için saklanır
+# (bkz. sema.ham_metin). Tek sayfalık bir dekont birkaç bin karakter; sınır
+# çok sayfalı/bozuk OCR çıktısının veritabanını şişirmesini engelliyor.
+HAM_METIN_AZAMI = 10_000
+
 MIKTAR_DESENI = re.compile(
     r"(\d{1,3}(?:\.\d{3})+,\d{2}|\d{1,3}(?:\.\d{3})+|\d+,\d{2}|\d+)\s*(TL|TRY|₺|USD|\$|EUR|€)?",
     re.IGNORECASE,
@@ -151,6 +156,7 @@ def _gorsel_ocr(icerik: bytes) -> str:
 # ------------------------------------------------------------- regex ayrıştırma
 def dekont_ayristir(metin: str) -> DekontSemasi:
     tutar, birim = _tutar_bul(metin)
+    ham_metin = metin[:HAM_METIN_AZAMI] or None
 
     if tutar is None:
         return DekontSemasi(
@@ -163,6 +169,7 @@ def dekont_ayristir(metin: str) -> DekontSemasi:
             gonderen_ad=None,
             banka=None,
             aciklama="Metinde bir tutar bulunamadı. Dekontu açıp elle kontrol edin.",
+            ham_metin=ham_metin,
         )
 
     para_birimi = birim or "TRY"
@@ -181,6 +188,7 @@ def dekont_ayristir(metin: str) -> DekontSemasi:
         gonderen_ad=gonderen_ad,
         banka=_banka_bul(metin),
         aciklama=f"{tutar:.2f} {para_birimi} tutarında işlem tespit edildi (regex/OCR).",
+        ham_metin=ham_metin,
     )
 
 
