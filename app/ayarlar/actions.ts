@@ -6,11 +6,24 @@ import { getAdminSupabase } from "@/lib/supabase/admin.ts";
 import { yoneticiDegilse } from "@/lib/supabase/rol.ts";
 import { siteUrl } from "@/lib/site-url.ts";
 
-export type ActionSonuc = { hata?: string; basari?: string };
+export type ActionSonuc = {
+  hata?: string;
+  basari?: string;
+  /** Davet edilen kişiye elden iletilecek tek kullanımlık bağlantı. */
+  davetLinki?: string;
+};
 
 /**
- * Yeni kullanıcıya davet e-postası gönderir — herkese açık kayıt formu yok,
- * hesaplar yalnızca mevcut bir yöneticinin daveti ile açılır.
+ * Yeni kullanıcı için tek kullanımlık davet bağlantısı üretir — herkese açık
+ * kayıt formu yok, hesaplar yalnızca mevcut bir yöneticinin daveti ile açılır.
+ *
+ * Bağlantı e-postayla GÖNDERİLMEZ, panelde gösterilir ve yönetici onu WhatsApp
+ * gibi bir kanaldan iletir. Nedeni: Supabase'in ücretsiz katmanında e-posta
+ * şablonları düzenlenemiyor (özel SMTP şart) ve varsayılan şablonun ürettiği
+ * bağlantı bizim `/auth/callback` akışımızla çalışmıyor — doğrulama verisini
+ * adres fragment'ine yazıyor, fragment ise sunucuya ulaşmıyor. Ayrıca dahili
+ * e-posta gönderimi saatte birkaç mesajla sınırlı ve üretim için önerilmiyor.
+ * Bağlantıyı kendimiz üretince SMTP kurmaya da kota derdine de gerek kalmıyor.
  */
 export async function kullaniciDavetEt(
   _prev: ActionSonuc,
@@ -30,15 +43,22 @@ export async function kullaniciDavetEt(
   if (!taban) return { hata: "SITE_URL tanımlı değil." };
 
   const admin = getAdminSupabase();
-  const { error } = await admin.auth.admin.inviteUserByEmail(eposta, {
-    data: { rol },
-    redirectTo: `${taban}/auth/callback`,
+  const { data, error } = await admin.auth.admin.generateLink({
+    type: "invite",
+    email: eposta,
+    options: { data: { rol } },
   });
 
   if (error) return { hata: error.message };
 
+  const tokenHash = data?.properties?.hashed_token;
+  if (!tokenHash) return { hata: "Davet bağlantısı üretilemedi." };
+
   revalidatePath("/ayarlar");
-  return { basari: `${eposta} adresine davet gönderildi.` };
+  return {
+    basari: `${eposta} için davet bağlantısı hazır. Bağlantıyı kendisine iletin — tek kullanımlıktır.`,
+    davetLinki: `${taban}/auth/callback?token_hash=${tokenHash}&type=invite`,
+  };
 }
 
 export async function ayarlariKaydet(

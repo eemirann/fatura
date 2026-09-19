@@ -4,12 +4,24 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getBrowserSupabase } from "@/lib/supabase/client";
 
+/**
+ * /auth/callback başarısız bir davet/sıfırlama bağlantısında buraya
+ * `?hata=...` ile yönlendiriyor (bkz. app/auth/callback/route.ts).
+ */
+const BAGLANTI_HATALARI: Record<string, string> = {
+  "baglanti-gecersiz": "Bağlantı geçersiz. Yeni bir sıfırlama bağlantısı isteyin.",
+  "baglanti-kullanilmis":
+    "Bu bağlantı daha önce kullanılmış ya da süresi dolmuş. Yeni bir sıfırlama bağlantısı isteyin.",
+};
+
 export default function GirisFormu() {
   const router = useRouter();
   const params = useSearchParams();
   const [eposta, setEposta] = useState("");
   const [sifre, setSifre] = useState("");
-  const [hata, setHata] = useState<string | null>(null);
+  const [hata, setHata] = useState<string | null>(
+    () => BAGLANTI_HATALARI[params.get("hata") ?? ""] ?? null,
+  );
   const [bekliyor, setBekliyor] = useState(false);
 
   async function gonder(e: React.FormEvent) {
