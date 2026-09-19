@@ -12,6 +12,13 @@ AZAMI_BOYUT = 10 * 1024 * 1024  # 10 MB — storage bucket limitiyle aynı
 
 
 class DekontYanit(BaseModel):
+    """Servisin dış sözleşmesi (lib/dekont-servis.ts ile aynı alanlar).
+
+    FastAPI yanıtı bu modele göre süzer: burada olmayan bir alan, sema.py'de
+    tanımlı olsa bile çıktıdan sessizce düşer. Yeni alan eklerken ikisini
+    birlikte güncelleyin.
+    """
+
     okunabilir: bool
     tutar: float | None
     para_birimi: str | None
@@ -21,6 +28,7 @@ class DekontYanit(BaseModel):
     gonderen_ad: str | None
     banka: str | None
     aciklama: str
+    ham_metin: str | None = None
 
 
 def anahtari_dogrula(x_service_key: str | None = Header(default=None)) -> None:
