@@ -191,6 +191,7 @@ export default async function DairePage({
               mime: d.mime,
               created_at: d.created_at,
               url: dekontUrlleri[d.id] ?? null,
+              ham_metin: hamMetin(d.ham_json),
             }))}
             saltOkunur={saltOkunur}
           />
@@ -225,4 +226,15 @@ export default async function DairePage({
       </main>
     </>
   );
+}
+
+/**
+ * `ham_json` şemasız (`unknown`) saklanıyor — dekont servisinin yanıtı olduğu
+ * gibi yazılıyor ve zamanla alan eklenebiliyor. Buradan yalnızca okunan düz
+ * metni, biçimi doğrulayarak çıkarır; beklenmeyen bir şey gelirse null döner.
+ */
+function hamMetin(ham: unknown): string | null {
+  if (!ham || typeof ham !== "object" || !("ham_metin" in ham)) return null;
+  const deger = (ham as { ham_metin: unknown }).ham_metin;
+  return typeof deger === "string" && deger.trim() ? deger : null;
 }

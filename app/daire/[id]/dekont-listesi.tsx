@@ -22,6 +22,8 @@ export type DekontGorunum = {
   mime: string;
   created_at: string;
   url: string | null;
+  /** Dekonttan okunan düz metin — tutar bulunamadığında nedenini gösterir. */
+  ham_metin: string | null;
 };
 
 const KAYNAK_ETIKET: Record<ReceiptKaynak, string> = {
@@ -244,6 +246,22 @@ function DekontSatiri({
             {dekont.aciklama}
           </p>
         )}
+
+      {/* Okuma takıldığında "neye bakarak karar verdi" sorusunun tek cevabı bu
+          metin. Varsayılan kapalı: günlük kullanımda gerekmiyor, yalnızca bir
+          dekont yanlış/eksik okunduğunda bakılıyor. */}
+      {dekont.ham_metin && (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-xs text-slate-500 hover:text-slate-800">
+            {dekont.eslesme === "unreadable"
+              ? "Dekonttan okunan metin — tutar bu metinde bulunamadı"
+              : "Dekonttan okunan metin"}
+          </summary>
+          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">
+            {dekont.ham_metin}
+          </pre>
+        </details>
+      )}
     </li>
   );
 }
