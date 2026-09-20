@@ -35,13 +35,18 @@ MIKTAR_DESENI = re.compile(
 TARIH_DESENI = re.compile(r"(\d{1,2})[./](\d{1,2})[./](\d{2,4})")
 IBAN_DESENI = re.compile(r"TR\d{2}(?:\s?\d{4}){5}\s?\d{2}")
 
+# Öncelik sırası önemli: karşı tarafa GEÇEN tutar, ücret dahil toplamdan
+# önce gelmeli. Faturaya karşılık gelen, ev sahibinin hesabına giren tutardır;
+# gönderenin ödediği ücret/komisyon fatura borcunu kapatmaz.
 TUTAR_ETIKET_ONCELIK = [
-    # (etiketler, satırdaki eşleşmelerden hangisi alınır)
-    # "Ücret Hariç" — bazı bankalarda TOPLAM'a komisyon/BSMV gibi ücretler
-    # eklenmiş oluyor; asıl gönderilen tutar bu değil, ücret hariç kalemdir.
-    # Aynı satırda genelde başka bir sütunun tutarı da bulunur, bu yüzden
-    # satırdaki SON eşleşme alınır (bkz. dekont_regex modül dokümanı).
+    # 1a. "Ücret Hariç" (Akbank ÜCH): aynı satırda genelde başka bir sütunun
+    # tutarı da bulunduğundan satırdaki SON eşleşme alınır.
     (["ücret hariç", "üch", "şch"], "son"),  # "şch": bazı font kodlamalarında Ü->Ş bozuluyor
+    # 1b. İş Bankası e-Dekont'unda aynı kavramın adı "Aktarılan Tutar" —
+    # ücret ayrı kalem, "Toplam Tutar" ikisinin toplamı. Burada SON değil İLK
+    # eşleşme alınır: sütunlar tek satıra birleşirse ücret sağda kalır.
+    (["aktarılan tutar", "aktarilan tutar"], "ilk"),
+    # 2. Transferin kendi tutarı.
     (
         [
             "işlem tutarı",
@@ -51,13 +56,29 @@ TUTAR_ETIKET_ONCELIK = [
             "eft tutarı",
             "ödeme tutarı",
             "gönderilecek tutar",
-            "toplam",
         ],
         "ilk",
     ),
+    # 3. "Genel toplam", "ara toplam"dan ayrı tutulur — ikisi aynı grupta olsa
+    # belgede önce geçen "Ara Toplam" kazanırdı (KDV öncesi tutar).
+    (["genel toplam"], "ilk"),
+    # 4. Son çare: düz toplam. Ücret dahil olabilir, o yüzden en sonda.
+    (["toplam tutar", "toplam"], "ilk"),
     (["tutar"], "ilk"),
 ]
-TUTAR_HARIC_KELIMELER = ["ücret", "masraf", "bakiye", "limit", "komisyon", "vergi", "kesinti"]
+# "ara toplam" burada: "toplam" etiketiyle eşleşen satırları elemek için tek yol
+# (etiket listesine eklenemez, çünkü kendisi "toplam" içeriyor).
+TUTAR_HARIC_KELIMELER = [
+    "ücret",
+    "masraf",
+    "bakiye",
+    "limit",
+    "komisyon",
+    "vergi",
+    "kesinti",
+    "ara toplam",
+    "bsmv",
+]
 TUTAR_SATIR_ARAMA_DERINLIGI = 3  # etiketten sonra kaç satır ileriye bakılacak (tablo düzenleri için)
 
 ALICI_ETIKETLERI = ["alıcı adı", "alıcı unvanı", "alıcı", "lehtar", "lehdar"]
@@ -102,40 +123,37 @@ def _kodlama_bozuk_mu(metin: str) -> bool:
     return metin.count("�") / len(metin) > BOZUK_KARAKTER_ORANI
 
 
-SATIR_Y_TOLERANSI = 1.5  # bu kadar yakın y0'lı kelimeler ayni satirda sayilir
-
-
 def _pdf_metni(icerik: bytes) -> str:
-    """Kelimeleri düz get_text() yerine konum (x/y) bilgisiyle satır satır
-    yeniden kurar. Çok sütunlu tablolarda (ör. gönderici/alıcı yan yana,
-    tutar/ücret/komisyon sütunları) get_text()'in tek akışa yassılttığı
-    metin, hangi sayının hangi satıra/sütuna ait olduğunu kaybediyor —
-    bu da regex'in yanlış değeri (ör. komisyon tutarını) yakalamasına yol
-    açabiliyor. Satır bazlı, x'e göre soldan sağa sıralanmış yeniden kurulum
-    bu riski azaltır.
+    """Metni, PDF'in KENDİ blok/satır yapısına göre kurar.
+
+    `get_text("words")` her kelime için (blok no, satır no, kelime no) da
+    döndürür — bunlar PDF'in gömülü metin yapısıdır. Kelimeleri buna göre
+    gruplamak, etiketi değerine bağlı tutar: "Aktarılan Tutar" ve
+    ": 10,00 TRY" ard arda gelir.
+
+    Daha önce burada y koordinatına göre kümeleme yapılıyordu (aynı yüksekliğe
+    yakın kelimeler aynı satır sayılıyordu). Bu, gerçek bir İş Bankası
+    e-Dekont'unda metni tamamen dağıttı: etiketler değerlerinden koptu, sonuç
+    olarak 10,00 TL'lik transfer, sayfanın başka bir yerindeki "BSMV:1,16"
+    satırından 1,16 TL okundu. Blok/satır numarası hem o dosyada doğru sonucu
+    veriyor hem de çok sütunlu tablolarda sütunları ayrı tutuyor — y kümelemenin
+    çözmeye çalıştığı asıl sorun buydu.
     """
     satirlar: list[str] = []
     with fitz.open(stream=icerik, filetype="pdf") as belge:
         for sayfa in belge:
-            kelimeler = sorted(sayfa.get_text("words"), key=lambda k: (round(k[1]), k[0]))
-            grup: list = []
-            grup_y: Optional[float] = None
-            for k in kelimeler:
-                y0 = k[1]
-                if grup and grup_y is not None and abs(y0 - grup_y) > SATIR_Y_TOLERANSI:
-                    satirlar.append(_satir_kur(grup))
-                    grup = []
-                    grup_y = None
-                grup.append(k)
-                if grup_y is None:
-                    grup_y = y0
-            if grup:
-                satirlar.append(_satir_kur(grup))
+            gruplar: dict[tuple[int, int], list] = {}
+            for k in sayfa.get_text("words"):
+                # k = (x0, y0, x1, y1, kelime, blok_no, satir_no, kelime_no)
+                gruplar.setdefault((k[5], k[6]), []).append(k)
+            for anahtar in sorted(gruplar):
+                satirlar.append(_satir_kur(gruplar[anahtar]))
     return "\n".join(satirlar)
 
 
 def _satir_kur(kelimeler: list) -> str:
-    return " ".join(k[4] for k in sorted(kelimeler, key=lambda k: k[0]))
+    """Bir satırın kelimelerini kendi sırasına göre birleştirir (k[7] = kelime no)."""
+    return " ".join(k[4] for k in sorted(kelimeler, key=lambda k: k[7]))
 
 
 def _pdf_ocr(icerik: bytes) -> str:

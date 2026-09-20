@@ -42,6 +42,69 @@ BSMV 0,00 TL 0,40 TL
 TOPLAM 18,37 TL
 """
 
+# Gerçek bir İş Bankası e-Dekont'undan alınmış yapı — ad, IBAN, müşteri/referans
+# numaraları sahte değerlerle değiştirildi, SATIR DÜZENİ AYNEN KORUNDU (hata
+# düzenden kaynaklanıyordu, içerikten değil).
+#
+# Bu dekont üç ayrı tutar taşıyor ve doğru olan EN KÜÇÜĞÜ değil ortancası:
+#   Aktarılan Tutar     10,00  <- faturaya karşılık gelen, alıcının hesabına giren
+#   Havale Ücreti+Vergi 39,99  <- göndericinin ödediği ücret
+#   Toplam Tutar        49,99  <- ikisinin toplamı
+#   BSMV                 1,16  <- ücretin içindeki vergi
+# Sistem önce 1,16 okuyordu (metin çıkarma dağıldığı için), blok/satır yapısına
+# geçilince 49,99'a, "Aktarılan Tutar" önceliklendirilince 10,00'a geldi.
+IS_BANKASI_EDEKONT = """e-Dekont
+AHMET YILMAZ DEMIR KAYA
+Müşteri No
+: 100000001
+İşlem Yeri
+: MOBİL BANKACILIK
+İşlem Zam./Valör
+: 20.09.2026 12:19:10 / 20.09.2026
+Referans Numarası
+: 20.09.2026/111/0000/0000
+e-Dekont Belge No
+: A000000000000000
+ETTN
+: 00000000-0000-0000-0000-000000000000
+Dekont Tarihi
+: 20.09.2026 12:20:09
+Senaryo/Dekont Tipi
+: DEKONT/HVL
+Para Aktarma
+Gönderici Hesap
+: AHMET YILMAZ DEMIR K
+TR00 0000 0000 0000 0000 0000 11
+MERKEZ/ANKARA
+Aktarılan Tutar
+: 10,00 TRY
+Havale Ücreti+Vergi
+: 39,99 TRY
+Ücret Tah. IBAN
+: TR00 0000 0000 0000 0000 0000 11
+Açıklama
+:
+Transfered by AHMET YILMAZ DEMIR KAYA
+İşleminiz gerçekleştirilmiştir.
+İşbu dekonta konu olan işlem gerçekleştirilmeden önce, işlem ücreti hakkında bankaca tarafıma gerekli bilgilendirme yapılmıştır. İşlem ücretini onaylıyorum.
+Alıcı Hesap
+:
+EM**** ER****
+TR11 1111 1111 1111 1111 1111 22
+MERKEZ/İSTANBUL
+Sorgu Numarası
+:
+H0000000000000
+Toplam Tutar
+:
+49,99 TRY
+İşlem Türü
+:
+Diğer
+BSMV:1,16 TRY
+GİB izni ile elektronik olarak üretilmiştir. e-Dekontu Şube, İşCep ve www.isbank.com.tr'den temin edebilirsiniz.
+"""
+
 ORNEK_DEKONT = """
 Türkiye İş Bankası
 EFT/Havale Dekontu
@@ -115,6 +178,24 @@ class DekontAyristirTest(unittest.TestCase):
     def test_ucret_haric_tutar_toplamdan_once_tercih_edilir(self):
         s = dekont_ayristir(UCRET_HARIC_DEKONT)
         self.assertEqual(s.tutar, 10.0)
+
+    def test_is_bankasi_aktarilan_tutar_toplamdan_once_gelir(self):
+        """Gerçek bir dekontta bildirilen hata: 10,00 yerine 1,16 okunuyordu.
+
+        Üç yanlış cevap da elenmeli: 1,16 (BSMV), 39,99 (ücret), 49,99 (toplam).
+        """
+        s = dekont_ayristir(IS_BANKASI_EDEKONT)
+        self.assertTrue(s.okunabilir)
+        self.assertEqual(s.tutar, 10.00)
+        self.assertEqual(s.para_birimi, "TRY")
+
+    def test_is_bankasi_tarihi_dogru_okunur(self):
+        s = dekont_ayristir(IS_BANKASI_EDEKONT)
+        self.assertEqual(s.tarih, "2026-09-20")
+
+    def test_ara_toplam_yerine_genel_toplam_alinir(self):
+        metin = "Ara Toplam 1.500,00 TL\nKDV 150,00 TL\nGenel Toplam 1.650,00 TL"
+        self.assertEqual(dekont_ayristir(metin).tutar, 1650.0)
 
     def test_bozuk_font_kodlamasi_tespit_edilir(self):
         bozuk = "G�NDER�C� B�LG�LER�\nAd� Soyad�\n"
