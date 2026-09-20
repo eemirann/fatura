@@ -201,9 +201,78 @@ def _gorsel_ocr(icerik: bytes) -> str:
 
 
 # ------------------------------------------------------------- regex ayrıştırma
+# Belgenin gerçekten bir para transferi dekontu olduğuna dair kanıtlar.
+# Biri bile yoksa okuma reddedilir: aksi hâlde "Toplam: 1.650,00 TL" yazan
+# HERHANGİ bir belge geçerli ödeme sayılıyordu.
+# "gönder" kökü bilerek: gönderen / gönderici / gönderilen / gönderilecek
+# hepsini kapsar. Fatura mesajındaki "gönderebilirsiniz" de eşleşir ama o
+# zaten DEKONT_DEGIL_ISARETLERI ile önceden elenir.
+DEKONT_KANITLARI = [
+    "dekont", "havale", "eft", "fast", "makbuz", "para aktarma", "virman",
+    "transfer", "gönder", "alıcı", "lehtar", "lehdar", "amir",
+    "alacaklı", "borçlu", "işlem tarihi", "valör", "referans",
+]
+
+# Dekont OLMADIĞINI gösteren ifadeler. Bunlar kanıtlardan ÖNCE bakılır ve
+# tek başına reddetmeye yeter.
+#
+# Kritik olan "son ödeme tarihi": ev sahibinin kiracıya gönderdiği fatura
+# mesajı (bkz. settings.mesaj_sablonu) hem IBAN hem "dekont" kelimesi hem de
+# "Toplam:" satırı içeriyor. Kiracı bu mesajın EKRAN GÖRÜNTÜSÜNÜ geri
+# gönderirse tüm kanıt testlerini geçer ve fatura ödenmiş işaretlenirdi.
+# Bankalar dekontlarında "son ödeme tarihi" yazmaz — ayırt edici olan bu.
+DEKONT_DEGIL_ISARETLERI = [
+    "son ödeme tarihi", "fatura bilgileri", "ödemenizin ardından",
+    "sipariş", "irsaliye", "adisyon", "teklif formu", "proforma",
+]
+
+
+def _dekont_kaniti_var_mi(metin: str) -> bool:
+    alt = _kucult(metin)
+    if any(_kucult(i) in alt for i in DEKONT_DEGIL_ISARETLERI):
+        return False
+    if any(_kucult(k) in alt for k in DEKONT_KANITLARI):
+        return True
+    # Banka adı da tek başına yeterli bir sinyal.
+    return _banka_bul(metin) is not None
+
+
 def dekont_ayristir(metin: str) -> DekontSemasi:
     tutar, birim = _tutar_bul(metin)
     ham_metin = metin[:HAM_METIN_AZAMI] or None
+
+    if not _dekont_kaniti_var_mi(metin):
+        return DekontSemasi(
+            okunabilir=False,
+            tutar=None,
+            para_birimi=None,
+            tarih=None,
+            alici_iban=None,
+            alici_ad=None,
+            gonderen_ad=None,
+            banka=None,
+            aciklama=(
+                "Bu dosya bir para transferi dekontuna benzemiyor. "
+                "Dekontu açıp elle kontrol edin."
+            ),
+            ham_metin=ham_metin,
+        )
+
+    # tutar <= 0: "0,00 TL" okunduğunda geçerli ödeme sayılıyordu. Toplamı 0
+    # olan bir taslak faturaya denk gelirse fark 0 çıkıp "ödendi" üretirdi.
+    if tutar is not None and tutar <= 0:
+        return DekontSemasi(
+            okunabilir=False,
+            tutar=None,
+            para_birimi=None,
+            tarih=None,
+            alici_iban=None,
+            alici_ad=None,
+            gonderen_ad=None,
+            banka=None,
+            aciklama="Okunan tutar sıfır ya da geçersiz. Dekontu açıp elle kontrol edin.",
+            ham_metin=ham_metin,
+        )
 
     if tutar is None:
         return DekontSemasi(

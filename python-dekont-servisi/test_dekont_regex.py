@@ -147,11 +147,11 @@ class DekontAyristirTest(unittest.TestCase):
         self.assertTrue(s.aciklama)
 
     def test_binlik_ayirici_olmadan_da_dogru_okunur(self):
-        s = dekont_ayristir("Tutar: 750,25 TL")
+        s = dekont_ayristir("HAVALE DEKONTU\nTutar: 750,25 TL")
         self.assertEqual(s.tutar, 750.25)
 
     def test_tam_sayi_tutar_da_okunur(self):
-        s = dekont_ayristir("Tutar: 500 TL")
+        s = dekont_ayristir("HAVALE DEKONTU\nTutar: 500 TL")
         self.assertEqual(s.tutar, 500.0)
 
     def test_amir_etiketi_gonderen_olarak_taninir(self):
@@ -159,7 +159,7 @@ class DekontAyristirTest(unittest.TestCase):
         self.assertEqual(s.gonderen_ad, "Emirhan Erbaş")
 
     def test_para_birimi_belirtilmezse_try_varsayilir(self):
-        s = dekont_ayristir("Tutar: 500")
+        s = dekont_ayristir("HAVALE DEKONTU\nTutar: 500")
         self.assertEqual(s.para_birimi, "TRY")
 
     def test_usd_tutar_dogru_isaretlenir(self):
@@ -197,7 +197,7 @@ class DekontAyristirTest(unittest.TestCase):
         self.assertEqual(s.tarih, "2026-09-20")
 
     def test_ara_toplam_yerine_genel_toplam_alinir(self):
-        metin = "Ara Toplam 1.500,00 TL\nKDV 150,00 TL\nGenel Toplam 1.650,00 TL"
+        metin = "DEKONT\nAra Toplam 1.500,00 TL\nKDV 150,00 TL\nGenel Toplam 1.650,00 TL"
         self.assertEqual(dekont_ayristir(metin).tutar, 1650.0)
 
     def test_buyuk_harfli_turkce_etiketler_eslesir(self):
@@ -248,6 +248,49 @@ class DekontAyristirTest(unittest.TestCase):
     def test_is_bankasi_gonderen_adi_dogru(self):
         s = dekont_ayristir(IS_BANKASI_EDEKONT)
         self.assertEqual(s.gonderen_ad, "AHMET YILMAZ DEMIR K")
+
+    # ------------------------------------------------ dekont olmayan belgeler
+    # Bunlar geçerli ödeme sayılıyordu: okunabilir=true için tek koşul
+    # "tutar/toplam" etiketli bir satırda sayı bulunmasıydı.
+
+    def test_fatura_mesajinin_ekran_goruntusu_odeme_sayilmaz(self):
+        """En tehlikeli senaryo: kiracı, ev sahibinin gönderdiği fatura
+        mesajının ekran görüntüsünü geri gönderiyor.
+
+        Bu metin IBAN, "dekont" kelimesi ve "Toplam:" satırı içerdiği için
+        kanıt testlerinin hepsini geçiyordu — fatura otomatik ödenmiş
+        işaretleniyordu. Ayırt edici olan "Son ödeme tarihi".
+        """
+        metin = (
+            "Merhaba Ahmet Bey,\n"
+            "Eylül 2026 dönemi fatura bilgileriniz:\n"
+            "Kira 1.500,00\nAidat 150,00\n"
+            "Toplam: 1.650,00\n"
+            "Son ödeme tarihi: 10.09.2026\n"
+            "IBAN: TR33 0006 1005 1978 6457 8413 26\n"
+            "Ad Soyad: Emirhan Erbaş\n"
+            "Ödemenizin ardından dekontu bu sohbete gönderebilirsiniz.\n"
+        )
+        s = dekont_ayristir(metin)
+        self.assertFalse(s.okunabilir)
+        self.assertIsNone(s.tutar)
+
+    def test_siparis_ozeti_odeme_sayilmaz(self):
+        s = dekont_ayristir("Sipariş Özeti\nToplam 1.650,00 TL")
+        self.assertFalse(s.okunabilir)
+        self.assertIsNone(s.tutar)
+
+    def test_alakasiz_belge_odeme_sayilmaz(self):
+        """Transfer kanıtı hiç yoksa okunmamalı."""
+        s = dekont_ayristir("Market Fişi\nToplam 650,00 TL")
+        self.assertFalse(s.okunabilir)
+
+    def test_sifir_tutar_gecerli_odeme_sayilmaz(self):
+        """0,00 okunması, toplamı 0 olan taslak faturayla eşleşip
+        'ödendi' üretebiliyordu."""
+        s = dekont_ayristir("HAVALE DEKONTU\nİşlem Tutarı: 0,00 TL")
+        self.assertFalse(s.okunabilir)
+        self.assertIsNone(s.tutar)
 
     def test_bozuk_font_kodlamasi_tespit_edilir(self):
         bozuk = "G�NDER�C� B�LG�LER�\nAd� Soyad�\n"
