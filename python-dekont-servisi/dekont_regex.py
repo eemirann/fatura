@@ -20,6 +20,35 @@ from PIL import Image
 
 from sema import DekontSemasi
 
+# Python'un str.lower()'ı Türkçe için yanlıştır ve etiket eşleşmesini sessizce
+# bozar: "İ".lower() -> "i̇" (i + ayrı birleşen nokta), "I".lower() -> "i"
+# (Türkçe'de "ı" olmalıydı). Sonuç: BÜYÜK HARFLE basılmış bir dekontta
+# "İŞLEM TUTARI" etiketi "işlem tutarı" ile EŞLEŞMİYORDU — bankalarda büyük
+# harf yaygın olduğu için tutar sık sık daha genel "toplam" etiketine düşüyordu.
+#
+# Çözüm, Türkçe'ye özgü harfleri ASCII karşılıklarına katlamak. Yan faydası:
+# Türkçe karakter kullanmayan (ALICI BILGILERI) ya da OCR'da şapkasını
+# kaybetmiş metinler de eşleşir hâle geliyor.
+_TR_KATLAMA = str.maketrans(
+    {
+        "İ": "i", "I": "i", "ı": "i",
+        "Ş": "s", "ş": "s",
+        "Ğ": "g", "ğ": "g",
+        "Ü": "u", "ü": "u",
+        "Ö": "o", "ö": "o",
+        "Ç": "c", "ç": "c",
+    }
+)
+# Not: Katlama harf-harf birebirdir (hiçbir karakter silinmez). _isim_bul,
+# katlanmış metinde bulduğu konumla ORİJİNAL satırı kestiği için bu şart —
+# uzunluğu değiştiren bir eşleme indeksleri kaydırırdı.
+
+
+def _kucult(metin: str) -> str:
+    """Etiket karşılaştırması için Türkçe-duyarlı küçültme (bkz. _TR_KATLAMA)."""
+    return metin.translate(_TR_KATLAMA).lower()
+
+
 MIN_METIN_UZUNLUGU = 20  # bunun altı "muhtemelen taranmış PDF" sayılır
 BOZUK_KARAKTER_ORANI = 0.02  # bunun üstü "font kodlaması bozuk" sayılır (OCR'a düşülür)
 
@@ -239,17 +268,19 @@ def _tutar_bul(metin: str) -> tuple[Optional[float], Optional[str]]:
         haric_filtresi_aktif = secim != "son"
 
         for i, satir in enumerate(satirlar):
-            alt = satir.lower()
-            if haric_filtresi_aktif and any(k in alt for k in TUTAR_HARIC_KELIMELER):
+            alt = _kucult(satir)
+            if haric_filtresi_aktif and any(_kucult(k) in alt for k in TUTAR_HARIC_KELIMELER):
                 continue
-            if not any(etiket in alt for etiket in etiket_grubu):
+            if not any(_kucult(etiket) in alt for etiket in etiket_grubu):
                 continue
 
             eslesmeler = list(MIKTAR_DESENI.finditer(satir))
             if not eslesmeler:
                 for j in range(i + 1, min(i + 1 + TUTAR_SATIR_ARAMA_DERINLIGI, len(satirlar))):
                     sonraki = satirlar[j]
-                    if haric_filtresi_aktif and any(k in sonraki.lower() for k in TUTAR_HARIC_KELIMELER):
+                    if haric_filtresi_aktif and any(
+                        _kucult(k) in _kucult(sonraki) for k in TUTAR_HARIC_KELIMELER
+                    ):
                         break
                     eslesmeler = list(MIKTAR_DESENI.finditer(sonraki))
                     if eslesmeler:
@@ -268,7 +299,7 @@ def _tarih_bul(metin: str) -> Optional[str]:
     etiketler = ["işlem tarihi", "valör tarihi", "tarih"]
     for etiket in etiketler:
         for i, satir in enumerate(satirlar):
-            if etiket in satir.lower():
+            if _kucult(etiket) in _kucult(satir):
                 for aday in (satir, satirlar[i + 1] if i + 1 < len(satirlar) else ""):
                     m = TARIH_DESENI.search(aday)
                     if m:
@@ -290,36 +321,108 @@ def _tarih_cevir(m: re.Match) -> Optional[str]:
         return None
 
 
-def _iban_bul(metin: str) -> Optional[str]:
-    satirlar = metin.split("\n")
-    for i, satir in enumerate(satirlar):
-        if "iban" in satir.lower():
-            for aday in (satir, satirlar[i + 1] if i + 1 < len(satirlar) else ""):
-                m = IBAN_DESENI.search(aday)
-                if m:
-                    return m.group(0).replace(" ", "")
+ALICI_TARAF_ETIKETLERI = ["alıcı", "alacaklı", "lehtar", "lehdar", "karşı taraf"]
+GONDEREN_TARAF_ETIKETLERI = [
+    "gönderici", "gönderen", "borçlu", "amir", "ücret", "masraf", "komisyon"
+]
+IBAN_SATIR_ARAMA_DERINLIGI = 4
 
-    m = IBAN_DESENI.search(metin)
-    return m.group(0).replace(" ", "") if m else None
+
+def _iban_bul(metin: str) -> Optional[str]:
+    """Paranın GİTTİĞİ (alıcı) IBAN'ı bulur.
+
+    Emin olunamadığında bilerek None döner. Önceki sürüm, "iban" geçen ilk
+    satırda bulamazsa metindeki ilk IBAN'a düşüyordu; dekontlarda bu genelde
+    GÖNDERENİN IBAN'ıdır. Gerçek bir İş Bankası dekontunda "Ücret Tah. IBAN"
+    satırını yakalayıp gönderenin IBAN'ını alıcı diye kaydetti. Sonuç: her
+    doğru dekontta "alıcı IBAN'ı farklı" uyarısı çıkıyor, uyarı körlüğü
+    yaratıyor ve gerçekten başka hesaba giden ödeme fark edilmiyordu.
+    """
+    satirlar = metin.split("\n")
+
+    # 1) Alıcı etiketinden çapalayarak ara — en güvenilir yol.
+    for i, satir in enumerate(satirlar):
+        alt = _kucult(satir)
+        if not any(_kucult(e) in alt for e in ALICI_TARAF_ETIKETLERI):
+            continue
+        if any(_kucult(e) in alt for e in GONDEREN_TARAF_ETIKETLERI):
+            continue  # "Gönderici/Alıcı" gibi tek satırda ikisi birden
+        for j in range(i, min(i + 1 + IBAN_SATIR_ARAMA_DERINLIGI, len(satirlar))):
+            m = IBAN_DESENI.search(satirlar[j])
+            if m:
+                return m.group(0).replace(" ", "")
+
+    # 2) "IBAN" etiketli satırlar — gönderen/ücret bağlamındakiler hariç.
+    for i, satir in enumerate(satirlar):
+        alt = _kucult(satir)
+        if "iban" not in alt:
+            continue
+        if any(_kucult(e) in alt for e in GONDEREN_TARAF_ETIKETLERI):
+            continue
+        for aday in (satir, satirlar[i + 1] if i + 1 < len(satirlar) else ""):
+            m = IBAN_DESENI.search(aday)
+            if m:
+                return m.group(0).replace(" ", "")
+
+    # 3) Metinde tek bir IBAN varsa belirsizlik yok, onu al.
+    hepsi = {m.group(0).replace(" ", "") for m in IBAN_DESENI.finditer(metin)}
+    return hepsi.pop() if len(hepsi) == 1 else None
+
+
+# Etiketi takip eden ama DEĞER olmayan sözcükler. "Gönderici Hesap",
+# "ALICI BILGILERI", "Alıcı Adı Soyadı" gibi başlıklarda etiketten sonra kişi
+# adı değil, başlığın devamı gelir. Bunlar ayıklanmazsa gönderen adı olarak
+# "Hesap" ya da "BILGILERI" kaydediliyordu (gerçek dekontlarda görüldü).
+ETIKET_DEVAM_SOZCUKLERI = {
+    "bilgileri", "bilgiler", "bilgisi",
+    "hesap", "hesabi", "hesabina", "no", "numarasi",
+    "adi", "ad", "soyadi", "soyad", "unvan", "unvani",
+    "iban", "sube", "banka", "turu", "tipi",
+}
+
+
+def _deger_mi(aday: str) -> bool:
+    """Etiketten artakalan parça gerçek bir değer mi, yoksa başlığın devamı mı."""
+    temiz = aday.strip(" :-\t/").strip()
+    if not temiz:
+        return False
+    parcalar = [p.strip(":/-") for p in _kucult(temiz).split()]
+    parcalar = [p for p in parcalar if p]
+    if not parcalar:
+        return False
+    # Tamamı başlık sözcüklerinden oluşuyorsa değer değildir.
+    return not all(p in ETIKET_DEVAM_SOZCUKLERI for p in parcalar)
 
 
 def _isim_bul(metin: str, etiketler: list[str]) -> Optional[str]:
     satirlar = metin.split("\n")
     for etiket in etiketler:
         for i, satir in enumerate(satirlar):
-            alt = satir.lower()
-            konum = alt.find(etiket)
+            alt = _kucult(satir)
+            konum = alt.find(_kucult(etiket))
             if konum == -1:
                 continue
 
-            sonrasi = satir[konum + len(etiket) :].strip(" :-\t")
-            if sonrasi:
-                return sonrasi.strip()
-            if i + 1 < len(satirlar):
-                aday = satirlar[i + 1].strip()
-                if aday:
-                    return aday
+            # Katlama birebir olduğu için konum orijinal satırda da geçerli.
+            sonrasi = satir[konum + len(etiket) :]
+            if _deger_mi(sonrasi):
+                return sonrasi.strip(" :-\t").strip()
+
+            # Değer ayrı satıra düşmüş olabilir. Bu durumda değer satırı ":" ile
+            # başlar — hem İş Bankası ("Gönderici Hesap" / ": ABDULLAH ...") hem
+            # Akbank ("Adi Soyadi/Unvan" / ": AYSE ERBAS") böyle. ":" şartı
+            # olmadan bir sonraki BAŞLIK satırı değer sanılıyordu
+            # ("GONDERICI BILGILERI" -> "ALICI BILGILERI").
+            for j in range(i + 1, min(i + 1 + ISIM_SATIR_ARAMA_DERINLIGI, len(satirlar))):
+                aday = satirlar[j].strip()
+                if not aday.startswith(":"):
+                    break
+                if _deger_mi(aday):
+                    return aday.strip(" :-\t").strip()
     return None
+
+
+ISIM_SATIR_ARAMA_DERINLIGI = 2
 
 
 def _iki_taraf_isim_bul(metin: str) -> tuple[Optional[str], Optional[str]]:
@@ -353,8 +456,8 @@ def _iki_taraf_isim_bul(metin: str) -> tuple[Optional[str], Optional[str]]:
 
 
 def _banka_bul(metin: str) -> Optional[str]:
-    alt = metin.lower()
+    alt = _kucult(metin)
     for banka in BILINEN_BANKALAR:
-        if banka.lower() in alt:
+        if _kucult(banka) in alt:
             return banka
     return None

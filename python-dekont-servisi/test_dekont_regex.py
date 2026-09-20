@@ -105,6 +105,9 @@ BSMV:1,16 TRY
 GİB izni ile elektronik olarak üretilmiştir. e-Dekontu Şube, İşCep ve www.isbank.com.tr'den temin edebilirsiniz.
 """
 
+# Fixture'daki alıcı IBAN'ının boşluksuz hâli (TR11 1111 ... 1111 22).
+ALICI_IBAN = "TR111111111111111111111122"
+
 ORNEK_DEKONT = """
 Türkiye İş Bankası
 EFT/Havale Dekontu
@@ -196,6 +199,55 @@ class DekontAyristirTest(unittest.TestCase):
     def test_ara_toplam_yerine_genel_toplam_alinir(self):
         metin = "Ara Toplam 1.500,00 TL\nKDV 150,00 TL\nGenel Toplam 1.650,00 TL"
         self.assertEqual(dekont_ayristir(metin).tutar, 1650.0)
+
+    def test_buyuk_harfli_turkce_etiketler_eslesir(self):
+        """Python'un .lower()'ı Türkçe'de bozuk: "İ"->"i̇", "I"->"i".
+
+        Bankalar dekontları sık sık BÜYÜK HARFLE basıyor; katlama olmadan
+        "İŞLEM TUTARI" etiketi hiç eşleşmiyor, tutar daha genel bir etikete
+        (ya da hiçbirine) düşüyordu.
+        """
+        s = dekont_ayristir("DEKONT\nİŞLEM TUTARI : 1.650,50 TL\nİŞLEM ÜCRETİ : 5,00 TL")
+        self.assertEqual(s.tutar, 1650.50)
+
+    def test_buyuk_harfli_aktarilan_tutar_eslesir(self):
+        s = dekont_ayristir("HAVALE DEKONTU\nAKTARILAN TUTAR : 10,00 TRY\nTOPLAM TUTAR : 49,99 TRY")
+        self.assertEqual(s.tutar, 10.00)
+
+    def test_alici_ibani_gonderenin_ibanina_dusmez(self):
+        """Ücret/gönderen bağlamındaki IBAN alıcının sanılmamalı."""
+        metin = (
+            "Gönderici Hesap\n"
+            ": AHMET YILMAZ\n"
+            "TR00 0000 0000 0000 0000 0000 11\n"
+            "Ücret Tah. IBAN\n"
+            ": TR00 0000 0000 0000 0000 0000 11\n"
+            "Alıcı Hesap\n"
+            ":\n"
+            "MEHMET KAYA\n"
+            "TR11 1111 1111 1111 1111 1111 22\n"
+            "Aktarılan Tutar\n"
+            ": 10,00 TRY\n"
+        )
+        self.assertEqual(dekont_ayristir(metin).alici_iban, ALICI_IBAN)
+
+    def test_is_bankasi_ibani_alicinin_olmali(self):
+        s = dekont_ayristir(IS_BANKASI_EDEKONT)
+        self.assertEqual(s.alici_iban, ALICI_IBAN)
+
+    def test_belirsizse_iban_tahmin_edilmez(self):
+        """İki IBAN var ve hangisinin alıcı olduğu belli değil -> None."""
+        metin = "Havale\nTR00 0000 0000 0000 0000 0000 11\nTR11 1111 1111 1111 1111 1111 22\nTutar: 10,00 TL"
+        self.assertIsNone(dekont_ayristir(metin).alici_iban)
+
+    def test_etiket_devami_isim_sanilmaz(self):
+        """'Gönderici Hesap' -> 'Hesap' değil, bir sonraki satırdaki değer."""
+        metin = "Gönderici Hesap\n: AHMET YILMAZ\nAktarılan Tutar\n: 10,00 TRY"
+        self.assertEqual(dekont_ayristir(metin).gonderen_ad, "AHMET YILMAZ")
+
+    def test_is_bankasi_gonderen_adi_dogru(self):
+        s = dekont_ayristir(IS_BANKASI_EDEKONT)
+        self.assertEqual(s.gonderen_ad, "AHMET YILMAZ DEMIR K")
 
     def test_bozuk_font_kodlamasi_tespit_edilir(self):
         bozuk = "G�NDER�C� B�LG�LER�\nAd� Soyad�\n"
