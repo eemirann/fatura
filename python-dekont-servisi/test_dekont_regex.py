@@ -249,6 +249,53 @@ class DekontAyristirTest(unittest.TestCase):
         s = dekont_ayristir(IS_BANKASI_EDEKONT)
         self.assertEqual(s.gonderen_ad, "AHMET YILMAZ DEMIR K")
 
+    # ------------------------------------------------------- para birimi (A3)
+    # Birim bulunamayınca TRY varsayılıyordu: 1650 USD'lik bir dekont 1650
+    # TL'lik faturayla eşleşip "ödendi" üretebiliyordu.
+
+    def test_para_birimi_sayinin_solunda_da_taninir(self):
+        s = dekont_ayristir("HAVALE DEKONTU\nGönderilen Tutar : USD 1.650,00")
+        self.assertEqual(s.para_birimi, "USD")
+        self.assertEqual(s.tutar, 1650.0)
+
+    def test_para_birimi_ayri_satirda_belirtilirse_taninir(self):
+        s = dekont_ayristir("HAVALE DEKONTU\nPara Birimi : USD\nİşlem Tutarı : 1.650,00")
+        self.assertEqual(s.para_birimi, "USD")
+
+    def test_yazili_para_birimi_taninir(self):
+        s = dekont_ayristir("HAVALE DEKONTU\nTutar 100,00 ABD Doları")
+        self.assertEqual(s.para_birimi, "USD")
+
+    # ------------------------------------------- yanlış sayı seçimi (B serisi)
+
+    def test_referans_numarasi_tutar_sanilmaz(self):
+        s = dekont_ayristir("DEKONT\nReferans No 20260902123 İşlem Tutarı 1.650,50 TL")
+        self.assertEqual(s.tutar, 1650.50)
+
+    def test_dekont_numarasi_tutar_sanilmaz(self):
+        """Numaralar geçerli tutar biçiminde yazılabiliyor (9.876.543),
+        bu yüzden biçimle değil etiketiyle ayırt ediliyor."""
+        s = dekont_ayristir("DEKONT\nDekont No 9.876.543 Gönderilen Tutar 1.650,00 TL")
+        self.assertEqual(s.tutar, 1650.00)
+
+    def test_tarih_ve_saat_rakamlari_tutar_sanilmaz(self):
+        s = dekont_ayristir("DEKONT\nİşlem Tarihi 02.09.2026 18:47 İşlem Tutarı 1.650,00 TL")
+        self.assertEqual(s.tutar, 1650.00)
+
+    def test_nokta_ondalik_ayirici_kurusu_silmez(self):
+        """1650.50 -> 1650 yuvarlanıyordu; 1 kuruşluk TOLERANS ile birleşince
+        yanlış bir 'tam eşleşti' üretebiliyordu."""
+        s = dekont_ayristir("DEKONT\nİşlem Tutarı: 1650.50 TL")
+        self.assertEqual(s.tutar, 1650.50)
+
+    def test_ingilizce_sayi_bicimi_dogru_okunur(self):
+        s = dekont_ayristir("DEKONT\nİşlem Tutarı: 1,650.00 TL")
+        self.assertEqual(s.tutar, 1650.00)
+
+    def test_milyonluk_tutar_bolunmeden_okunur(self):
+        s = dekont_ayristir("DEKONT\nİşlem Tutarı: 9.876.543,21 TL")
+        self.assertEqual(s.tutar, 9876543.21)
+
     # ------------------------------------------------ dekont olmayan belgeler
     # Bunlar geçerli ödeme sayılıyordu: okunabilir=true için tek koşul
     # "tutar/toplam" etiketli bir satırda sayı bulunmasıydı.

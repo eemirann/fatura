@@ -57,10 +57,48 @@ BOZUK_KARAKTER_ORANI = 0.02  # bunun üstü "font kodlaması bozuk" sayılır (O
 # çok sayfalı/bozuk OCR çıktısının veritabanını şişirmesini engelliyor.
 HAM_METIN_AZAMI = 10_000
 
+_PARA_SEMBOLU = r"TL|TRY|₺|USD|\$|EUR|€|GBP|£"
+# Para birimi sayının SOLUNDA da olabilir ("USD 1.650,00"). Önceki sürüm
+# yalnızca sağa bakıyordu; bulamayınca TRY varsayıldığı için 1650 USD'lik bir
+# dekont 1650 TL'lik faturayla eşleşip "ödendi" üretebiliyordu.
+# Sıra önemli: en spesifik biçim önce denenir. Ayraçların anlamını
+# _sayi_cevir çözer (Türkçe 1.650,00 ile İngilizce 1,650.00 aynı desene uyar).
 MIKTAR_DESENI = re.compile(
-    r"(\d{1,3}(?:\.\d{3})+,\d{2}|\d{1,3}(?:\.\d{3})+|\d+,\d{2}|\d+)\s*(TL|TRY|₺|USD|\$|EUR|€)?",
+    rf"(?:(?P<onek>{_PARA_SEMBOLU})\s*)?"
+    r"(?P<sayi>"
+    # (?!\d) şart: onsuz "9.876.543" -> "9.876.54" + "3" diye bölünüyordu
+    # (son ".54" ondalık sanılıyor, kalan "3" ayrı bir tutar oluyordu).
+    r"\d{1,3}(?:[.,]\d{3})+[.,]\d{2}(?!\d)"  # 1.650,00 / 1,650.00
+    r"|\d+[.,]\d{2}(?!\d)"                 # 650,00 / 1650.50
+    r"|\d{1,3}(?:[.,]\d{3})+(?![\d.,])"    # 1.650 / 1,650
+    r"|\d+"                                # 1650
+    r")"
+    rf"\s*(?P<sonek>{_PARA_SEMBOLU})?",
     re.IGNORECASE,
 )
+
+# Sayının yanında hiç sembol yoksa metnin tamamında aranacak yazılı biçimler.
+YAZILI_PARA_BIRIMLERI = [
+    ("USD", ["abd doları", "amerikan doları", "dolar"]),
+    ("EUR", ["euro", "avro"]),
+    ("GBP", ["sterlin", "ingiliz sterlini"]),
+]
+
+
+def _metin_para_birimi(metin: str) -> Optional[str]:
+    """Tutarın yanında birim yoksa metinde ayrıca belirtilmiş mi diye bakar.
+
+    Bazı dekontlarda birim ayrı bir alanda duruyor ("Para Birimi : USD") ya da
+    yazıyla geçiyor ("100,00 ABD Doları"). Bulunamazsa None döner; TRY varsayımı
+    çağıran tarafta, yalnızca yabancı para işareti hiç yokken yapılır.
+    """
+    alt = _kucult(metin)
+    for kod, yazimlar in YAZILI_PARA_BIRIMLERI:
+        if any(_kucult(y) in alt for y in yazimlar):
+            return kod
+        if re.search(rf"\b{kod.lower()}\b", alt):
+            return kod
+    return None
 TARIH_DESENI = re.compile(r"(\d{1,2})[./](\d{1,2})[./](\d{2,4})")
 IBAN_DESENI = re.compile(r"TR\d{2}(?:\s?\d{4}){5}\s?\d{2}")
 
@@ -288,7 +326,10 @@ def dekont_ayristir(metin: str) -> DekontSemasi:
             ham_metin=ham_metin,
         )
 
-    para_birimi = birim or "TRY"
+    # TRY varsayımı en sona: önce tutarın yanındaki sembol, sonra metinde
+    # ayrıca belirtilmiş bir yabancı para birimi aranır. Aksi hâlde birimi
+    # okunamayan bir USD dekontu TL sanılıp faturayla eşleşiyordu.
+    para_birimi = birim or _metin_para_birimi(metin) or "TRY"
     alici_ad = _isim_bul(metin, ALICI_ETIKETLERI)
     gonderen_ad = _isim_bul(metin, GONDEREN_ETIKETLERI)
     if alici_ad is None and gonderen_ad is None:
@@ -309,9 +350,31 @@ def dekont_ayristir(metin: str) -> DekontSemasi:
 
 
 def _sayi_cevir(ham: str) -> Optional[float]:
-    temiz = ham.strip().replace(".", "").replace(",", ".")
+    """Ayraçların anlamını biçimden çözerek sayıya çevirir.
+
+    Önceki sürüm noktayı koşulsuz binlik ayracı sayıyordu; "1650.50" 1650'ye
+    yuvarlanıp kuruş sessizce siliniyordu. 1 kuruşluk TOLERANS ile birleşince
+    bu, yanlış bir "tam eşleşti" üretebiliyordu.
+
+    Kural: iki ayraç da varsa EN SAĞDAKİ ondalıktır (1.650,00 -> TR,
+    1,650.00 -> EN). Tek ayraç varsa ardındaki hane sayısı belirler:
+    üç hane binlik (1.650), iki hane ondalık (1650.50).
+    """
+    t = ham.strip()
+
+    if "," in t and "." in t:
+        if t.rfind(",") > t.rfind("."):
+            t = t.replace(".", "").replace(",", ".")
+        else:
+            t = t.replace(",", "")
+    elif "," in t:
+        t = t.replace(",", ".") if len(t.rsplit(",", 1)[1]) == 2 else t.replace(",", "")
+    elif "." in t:
+        if len(t.rsplit(".", 1)[1]) == 3:
+            t = t.replace(".", "")
+
     try:
-        return round(float(temiz), 2)
+        return round(float(t), 2)
     except ValueError:
         return None
 
@@ -329,6 +392,49 @@ def _para_birimi_cevir(sembol: Optional[str]) -> Optional[str]:
     return s
 
 
+# Tarih ve saat, tutar deseniyle de eşleşen rakam grupları içerir:
+# "02.09.2026 18:47" içinden sırasıyla 02, 09.202, 6, 18, 47 yakalanıyor ve
+# ilki tutar sanılıyordu. Bu aralıklar tutar adayı sayılmaz.
+TARIH_SAAT_DESENI = re.compile(r"\d{1,4}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}:\d{2}(?::\d{2})?")
+
+# Ayraçsız ve para birimsiz uzun rakam dizileri tutar değil, referans/hesap/
+# dekont numarasıdır. Kira tutarları bu büyüklüğe ulaşmaz.
+AZAMI_AYRACSIZ_HANE = 6
+
+# Sayıdan hemen önce gelirse o sayının tutar değil, bir NUMARA olduğunu
+# gösteren etiketler. "Dekont No 9.876.543" gibi numaralar geçerli tutar
+# biçiminde yazılabildiği için biçime bakarak ayırt etmek mümkün değil.
+NUMARA_ETIKETI_DESENI = re.compile(
+    r"(?:\bno\b|\bnu\b|numara|referans|belge|sicil|seri|dekont\s+no|hesap\s+no|kod)"
+    r"[\s.:#/-]*$",
+    re.IGNORECASE,
+)
+NUMARA_ETIKETI_BAKIS = 24  # sayıdan geriye kaç karakter incelenecek
+
+
+def _tutar_adayi_mi(m: re.Match, satir: str, yasakli: list[tuple[int, int]]) -> bool:
+    """Eşleşmenin gerçekten bir para tutarı olup olmadığı."""
+    bas, son = m.span("sayi")
+    if any(bas < bitis and son > baslangic for baslangic, bitis in yasakli):
+        return False  # tarih/saat aralığının içinde
+
+    oncesi = _kucult(satir[max(0, bas - NUMARA_ETIKETI_BAKIS) : bas])
+    if NUMARA_ETIKETI_DESENI.search(oncesi):
+        return False  # referans/dekont/hesap numarası
+
+    sayi = m.group("sayi")
+    if not any(c in sayi for c in ".,") and not (m.group("onek") or m.group("sonek")):
+        if len(sayi) > AZAMI_AYRACSIZ_HANE:
+            return False  # ayraçsız uzun dizi: numara
+    return True
+
+
+def _satirdaki_tutarlar(satir: str) -> list[re.Match]:
+    """Satırdaki para tutarı adaylarını döner (tarih/saat ve numaralar elenmiş)."""
+    yasakli = [m.span() for m in TARIH_SAAT_DESENI.finditer(satir)]
+    return [m for m in MIKTAR_DESENI.finditer(satir) if _tutar_adayi_mi(m, satir, yasakli)]
+
+
 def _tutar_bul(metin: str) -> tuple[Optional[float], Optional[str]]:
     satirlar = metin.split("\n")
     for etiket_grubu, secim in TUTAR_ETIKET_ONCELIK:
@@ -343,7 +449,7 @@ def _tutar_bul(metin: str) -> tuple[Optional[float], Optional[str]]:
             if not any(_kucult(etiket) in alt for etiket in etiket_grubu):
                 continue
 
-            eslesmeler = list(MIKTAR_DESENI.finditer(satir))
+            eslesmeler = _satirdaki_tutarlar(satir)
             if not eslesmeler:
                 for j in range(i + 1, min(i + 1 + TUTAR_SATIR_ARAMA_DERINLIGI, len(satirlar))):
                     sonraki = satirlar[j]
@@ -351,15 +457,16 @@ def _tutar_bul(metin: str) -> tuple[Optional[float], Optional[str]]:
                         _kucult(k) in _kucult(sonraki) for k in TUTAR_HARIC_KELIMELER
                     ):
                         break
-                    eslesmeler = list(MIKTAR_DESENI.finditer(sonraki))
+                    eslesmeler = _satirdaki_tutarlar(sonraki)
                     if eslesmeler:
                         break
 
             if eslesmeler:
                 m = eslesmeler[-1] if secim == "son" else eslesmeler[0]
-                tutar = _sayi_cevir(m.group(1))
+                tutar = _sayi_cevir(m.group("sayi"))
                 if tutar is not None:
-                    return tutar, _para_birimi_cevir(m.group(2))
+                    # Sağdaki sembol önceliklidir; yoksa soldaki kullanılır.
+                    return tutar, _para_birimi_cevir(m.group("sonek") or m.group("onek"))
     return None, None
 
 
