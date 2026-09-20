@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { yoneticiDegilse } from "@/lib/supabase/rol";
 import { sonOdemeTarihi } from "@/lib/format";
+import { faturaDurumunuTazele } from "@/lib/fatura-durum";
 import { wahaAktifMi, wahaMesajGonder } from "@/lib/waha";
 
 export type ActionSonuc = { hata?: string; basari?: string };
@@ -89,7 +90,7 @@ export async function faturaKaydet(
       { unit_id: unitId, donem, son_odeme_tarihi: vade },
       { onConflict: "unit_id,donem", ignoreDuplicates: false },
     )
-    .select("id")
+    .select("id, gonderildi_at")
     .single();
 
   if (faturaHatasi || !fatura) {
@@ -107,6 +108,9 @@ export async function faturaKaydet(
     .from("invoice_items")
     .insert(kalemler.map((k) => ({ ...k, invoice_id: fatura.id })));
   if (eklemeHatasi) return { hata: eklemeHatasi.message };
+
+  const durumHatasi = await faturaDurumunuTazele(supabase, fatura.id, fatura.gonderildi_at);
+  if (durumHatasi) return { hata: durumHatasi };
 
   revalidatePath(`/daire/${unitId}`);
   revalidatePath("/");

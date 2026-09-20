@@ -27,6 +27,34 @@ export function toplananTutar(
     .reduce((t, d) => t + (d.okunan_tutar ?? 0), 0);
 }
 
+/**
+ * Kalemler değiştikten sonra faturanın durumunu dekontlardan yeniden belirler.
+ *
+ * Neden gerekli: fatura upsert'i `durum` alanına dokunmuyor. Ödenmiş bir
+ * dönemin faturası yeni bir tutarla kaydedilince kalemler değişiyor, trigger
+ * `toplam`'ı güncelliyor, ama durum `odendi` olarak kalıyordu — panelde
+ * yeşil görünen ama aslında karşılığı ödenmemiş bir fatura. Yanlış ödeme
+ * onayının en sessiz hâli: kimse bakmıyor, çünkü zaten ödenmiş görünüyor.
+ *
+ * `gonderildiMi`: fatura daha önce kiracıya gönderildiyse taslağa geri
+ * düşürmemek için — hiç gönderilmemiş bir fatura "taslak" olarak kalmalı.
+ */
+export function kalemDegisimindeDurum(
+  yeniToplam: number,
+  dekontlar: { eslesme: ReceiptEslesme; okunan_tutar: number | null }[],
+  gonderildiMi: boolean,
+): InvoiceDurum {
+  const toplanan = toplananTutar(dekontlar);
+
+  if (toplanan > 0) {
+    if (Math.abs(toplanan - yeniToplam) <= TOLERANS) return "odendi";
+    if (toplanan > yeniToplam + TOLERANS) return "uyusmadi";
+    // Eksik kalıyorsa kısmi ödeme: fatura hâlâ açık.
+  }
+
+  return gonderildiMi ? "gonderildi" : "taslak";
+}
+
 function ibanSonHane(iban: string | null | undefined, n = 4): string | null {
   if (!iban) return null;
   const temiz = iban.replace(/\s/g, "").toUpperCase();

@@ -192,6 +192,12 @@ export default async function DairePage({
               created_at: d.created_at,
               url: dekontUrlleri[d.id] ?? null,
               ham_metin: hamMetin(d.ham_json),
+              // invoices.updated_at yalnızca kalemler (ve dolayısıyla toplam)
+              // değişince güncellenir — durum güncellemeleri ona dokunmaz
+              // (bkz. 0001_init.sql, sync_invoice_toplam). Dolayısıyla bundan
+              // önce yüklenmiş bir dekont, şu anki tutardan önceye aittir.
+              eski_tutara_ait:
+                new Date(d.created_at).getTime() < new Date(fatura.updated_at).getTime(),
             }))}
             saltOkunur={saltOkunur}
           />

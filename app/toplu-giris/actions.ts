@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { yoneticiDegilse } from "@/lib/supabase/rol";
 import { sonOdemeTarihi } from "@/lib/format";
+import { faturaDurumunuTazele } from "@/lib/fatura-durum";
 
 export type ActionSonuc = { hata?: string; basari?: string };
 
@@ -63,7 +64,7 @@ export async function topluKalemUygula(
         { unit_id: unitId, donem, son_odeme_tarihi: vade },
         { onConflict: "unit_id,donem", ignoreDuplicates: false },
       )
-      .select("id")
+      .select("id, gonderildi_at")
       .single();
 
     if (faturaHatasi || !fatura) {
@@ -78,27 +79,39 @@ export async function topluKalemUygula(
       .eq("baslik", baslik)
       .maybeSingle();
 
+    let kalemHatasi: string | null = null;
+
     if (mevcutKalem) {
       const { error } = await supabase
         .from("invoice_items")
         .update({ tutar })
         .eq("id", mevcutKalem.id);
-      if (error) hataSayisi++;
-      else uygulanan++;
+      kalemHatasi = error?.message ?? null;
+    } else {
+      const { count } = await supabase
+        .from("invoice_items")
+        .select("id", { count: "exact", head: true })
+        .eq("invoice_id", fatura.id);
+
+      const { error } = await supabase
+        .from("invoice_items")
+        .insert({ invoice_id: fatura.id, baslik, tutar, sira: count ?? 0 });
+      kalemHatasi = error?.message ?? null;
+    }
+
+    if (kalemHatasi) {
+      hataSayisi++;
       continue;
     }
 
-    const { count } = await supabase
-      .from("invoice_items")
-      .select("id", { count: "exact", head: true })
-      .eq("invoice_id", fatura.id);
+    // Tutar değiştiği için durum yeniden hesaplanmalı — aksi hâlde ödenmiş
+    // bir fatura yeni tutarla "ödendi" kalırdı (bkz. lib/fatura-durum.ts).
+    if (await faturaDurumunuTazele(supabase, fatura.id, fatura.gonderildi_at)) {
+      hataSayisi++;
+      continue;
+    }
 
-    const { error } = await supabase
-      .from("invoice_items")
-      .insert({ invoice_id: fatura.id, baslik, tutar, sira: count ?? 0 });
-
-    if (error) hataSayisi++;
-    else uygulanan++;
+    uygulanan++;
   }
 
   revalidatePath("/");

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { eslestir, toplananTutar } from "../lib/esles.ts";
+import { eslestir, kalemDegisimindeDurum, toplananTutar } from "../lib/esles.ts";
 import type { DekontOkuma } from "../lib/dekont-servis.ts";
 
 const IBAN = "TR330006100519786457841326";
@@ -150,4 +150,37 @@ test("toplananTutar yalnızca matched ve kismi dekontları sayar", () => {
     { eslesme: "unreadable", okunan_tutar: null },
   ]);
   assert.equal(toplam, 800);
+});
+
+// ---------------------------------------------------- kalem değişiminde durum
+// Fatura upsert'i durum alanına dokunmuyordu: ödenmiş bir dönemin faturası
+// yeni bir tutarla kaydedilince panelde yeşil kalıyor, karşılığı ödenmemiş
+// olmasına rağmen kimse fark etmiyordu.
+
+test("tutar artınca ödenmiş fatura tekrar açılır", () => {
+  const durum = kalemDegisimindeDurum(250, [{ eslesme: "matched", okunan_tutar: 10 }], true);
+  assert.equal(durum, "gonderildi");
+});
+
+test("dekontlar yeni tutarı hâlâ karşılıyorsa ödendi kalır", () => {
+  const durum = kalemDegisimindeDurum(10, [{ eslesme: "matched", okunan_tutar: 10 }], true);
+  assert.equal(durum, "odendi");
+});
+
+test("dekont toplamı yeni tutarı aşıyorsa uyuşmadı olur", () => {
+  const durum = kalemDegisimindeDurum(5, [{ eslesme: "matched", okunan_tutar: 10 }], true);
+  assert.equal(durum, "uyusmadi");
+});
+
+test("hiç dekont yoksa ve fatura gönderilmemişse taslağa döner", () => {
+  assert.equal(kalemDegisimindeDurum(250, [], false), "taslak");
+});
+
+test("hiç dekont yoksa ama fatura gönderilmişse gönderildi kalır", () => {
+  assert.equal(kalemDegisimindeDurum(250, [], true), "gonderildi");
+});
+
+test("kısmi ödeme yeni tutarı karşılamıyorsa fatura açık kalır", () => {
+  const durum = kalemDegisimindeDurum(250, [{ eslesme: "kismi", okunan_tutar: 100 }], true);
+  assert.equal(durum, "gonderildi");
 });

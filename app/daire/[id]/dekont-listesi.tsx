@@ -24,6 +24,8 @@ export type DekontGorunum = {
   url: string | null;
   /** Dekonttan okunan düz metin — tutar bulunamadığında nedenini gösterir. */
   ham_metin: string | null;
+  /** Fatura tutarı bu dekont yüklendikten SONRA değiştirilmiş. */
+  eski_tutara_ait: boolean;
 };
 
 const KAYNAK_ETIKET: Record<ReceiptKaynak, string> = {
@@ -246,6 +248,13 @@ function DekontSatiri({
             {dekont.aciklama}
           </p>
         )}
+
+      {dekont.eski_tutara_ait && (
+        <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Bu dekont yüklendikten sonra fatura tutarı değiştirildi — dekont
+          eski tutara ait olabilir.
+        </p>
+      )}
 
       {/* Okuma takıldığında "neye bakarak karar verdi" sorusunun tek cevabı bu
           metin. Varsayılan kapalı: günlük kullanımda gerekmiyor, yalnızca bir
