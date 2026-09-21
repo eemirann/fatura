@@ -42,6 +42,15 @@ RUN npm run build
 FROM node:22-alpine AS runner
 WORKDIR /app
 
+# Saat dilimi verisi. Alpine'in musl'i adli bolgeleri (Europe/Istanbul)
+# ancak bu paketle cozebiliyor; yoksa TZ degiskeni sessizce yok sayilip UTC'de
+# kalinir. Bu onemli: lib/format.ts'teki isoGun()/donemAnahtari() yerel saat
+# metotlarini kullaniyor, dolayisiyla UTC'de her gece 00:00-03:00 arasi
+# "bugun" bir gun geride hesaplanir ve "vadesi gecti" yanlis cikar.
+# Node'un kendi ICU verisi bunu bazi derlemelerde zaten cozuyor; tahmine
+# birakmamak icin acikca kuruluyor (~2 MB).
+RUN apk add --no-cache tzdata
+
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3100
