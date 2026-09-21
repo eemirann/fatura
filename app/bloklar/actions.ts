@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { yoneticiDegilse } from "@/lib/supabase/rol";
+import { denetimYaz } from "@/lib/denetim";
 
 export type ActionSonuc = { hata?: string };
 
@@ -51,8 +52,23 @@ export async function blokSil(_prev: ActionSonuc, fd: FormData): Promise<ActionS
     return { hata: "Bu blokta daireler var. Önce daireleri silin." };
   }
 
+  // Adı silmeden önce alıyoruz; sonrasında kayıt yok olduğu için denetim
+  // kaydında yalnızca bir UUID kalırdı.
+  const { data: blok } = await supabase
+    .from("blocks")
+    .select("ad")
+    .eq("id", id)
+    .maybeSingle();
+
   const { error } = await supabase.from("blocks").delete().eq("id", id);
   if (error) return { hata: error.message };
+
+  await denetimYaz({
+    eylem: "blok_silindi",
+    hedefTur: "block",
+    hedefId: id,
+    detay: { ad: blok?.ad ?? null },
+  });
 
   revalidatePath("/bloklar");
   revalidatePath("/");
@@ -137,8 +153,28 @@ export async function daireSil(_prev: ActionSonuc, fd: FormData): Promise<Action
   const id = metin(fd, "id");
   const supabase = await getServerSupabase();
 
+  // Daire silmek tüm fatura ve dekont geçmişini de siler (cascade). Neyin
+  // gittiğini silmeden önce kaydediyoruz — sonrasında geri dönüp bakılacak
+  // hiçbir kayıt kalmıyor.
+  const { data: daire } = await supabase
+    .from("units")
+    .select("kapi_no, kiraci_adi, block_id")
+    .eq("id", id)
+    .maybeSingle();
+
   const { error } = await supabase.from("units").delete().eq("id", id);
   if (error) return { hata: error.message };
+
+  await denetimYaz({
+    eylem: "daire_silindi",
+    hedefTur: "unit",
+    hedefId: id,
+    detay: {
+      kapi_no: daire?.kapi_no ?? null,
+      kiraci_adi: daire?.kiraci_adi ?? null,
+      block_id: daire?.block_id ?? null,
+    },
+  });
 
   revalidatePath("/bloklar");
   revalidatePath("/");

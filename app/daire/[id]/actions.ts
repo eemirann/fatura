@@ -5,6 +5,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { yoneticiDegilse } from "@/lib/supabase/rol";
 import { sonOdemeTarihi } from "@/lib/format";
 import { faturaDurumunuTazele } from "@/lib/fatura-durum";
+import { denetimYaz } from "@/lib/denetim";
 import { wahaAktifMi, wahaMesajGonder } from "@/lib/waha";
 
 export type ActionSonuc = { hata?: string; basari?: string };
@@ -112,6 +113,18 @@ export async function faturaKaydet(
   const durumHatasi = await faturaDurumunuTazele(supabase, fatura.id, fatura.gonderildi_at);
   if (durumHatasi) return { hata: durumHatasi };
 
+  await denetimYaz({
+    eylem: "fatura_kaydedildi",
+    hedefTur: "invoice",
+    hedefId: fatura.id,
+    detay: {
+      unit_id: unitId,
+      donem,
+      toplam: kalemler.reduce((t, k) => t + k.tutar, 0),
+      kalem_sayisi: kalemler.length,
+    },
+  });
+
   revalidatePath(`/daire/${unitId}`);
   revalidatePath("/");
   return { basari: "Fatura kaydedildi." };
@@ -154,6 +167,13 @@ export async function gonderildiIsaretle(
 
   if (error) return { hata: error.message };
 
+  await denetimYaz({
+    eylem: "fatura_gonderildi",
+    hedefTur: "invoice",
+    hedefId: faturaId,
+    detay: { unit_id: unitId, otomatik: wahaAktifMi() },
+  });
+
   revalidatePath(`/daire/${unitId}`);
   revalidatePath("/");
   return { basari: "Gönderildi ✓" };
@@ -177,6 +197,13 @@ export async function incelendiIsaretle(
     .eq("id", faturaId);
 
   if (error) return { hata: error.message };
+
+  await denetimYaz({
+    eylem: "dekont_incelendi",
+    hedefTur: "invoice",
+    hedefId: faturaId,
+    detay: { unit_id: unitId },
+  });
 
   revalidatePath(`/daire/${unitId}`);
   revalidatePath("/");
@@ -205,6 +232,15 @@ export async function eldeOdendiIsaretle(
 
   if (error) return { hata: error.message };
 
+  // Otomatik eşleşmeyi baypas eden, doğrudan para anlamına gelen işlem —
+  // denetim kaydının asıl sebebi.
+  await denetimYaz({
+    eylem: "elle_odendi_isaretlendi",
+    hedefTur: "invoice",
+    hedefId: faturaId,
+    detay: { unit_id: unitId },
+  });
+
   revalidatePath(`/daire/${unitId}`);
   revalidatePath("/");
   return { basari: "Ödendi olarak işaretlendi." };
@@ -228,6 +264,13 @@ export async function odemeyiGeriAl(
     .eq("id", faturaId);
 
   if (error) return { hata: error.message };
+
+  await denetimYaz({
+    eylem: "odeme_geri_alindi",
+    hedefTur: "invoice",
+    hedefId: faturaId,
+    detay: { unit_id: unitId },
+  });
 
   revalidatePath(`/daire/${unitId}`);
   revalidatePath("/");

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server.ts";
 import { getAdminSupabase } from "@/lib/supabase/admin.ts";
 import { yoneticiDegilse } from "@/lib/supabase/rol.ts";
+import { denetimYaz } from "@/lib/denetim.ts";
 import { siteUrl } from "@/lib/site-url.ts";
 
 export type ActionSonuc = {
@@ -54,6 +55,14 @@ export async function kullaniciDavetEt(
   const tokenHash = data?.properties?.hashed_token;
   if (!tokenHash) return { hata: "Davet bağlantısı üretilemedi." };
 
+  // Panele erişim verme işlemi — kimin kimi davet ettiği iz bırakmalı.
+  await denetimYaz({
+    eylem: "kullanici_davet_edildi",
+    hedefTur: "user",
+    hedefId: eposta,
+    detay: { rol },
+  });
+
   revalidatePath("/ayarlar");
   return {
     basari: `${eposta} için davet bağlantısı hazır. Bağlantıyı kendisine iletin — tek kullanımlıktır.`,
@@ -87,6 +96,15 @@ export async function ayarlariKaydet(
   }
 
   const supabase = await getServerSupabase();
+
+  // IBAN'ı değiştirmek paranın nereye gideceğini değiştirir; eski değeri
+  // kaydedebilmek için güncellemeden önce okuyoruz.
+  const { data: onceki } = await supabase
+    .from("settings")
+    .select("iban, hesap_sahibi")
+    .eq("id", true)
+    .maybeSingle();
+
   const { error } = await supabase
     .from("settings")
     .update({
@@ -99,6 +117,16 @@ export async function ayarlariKaydet(
     .eq("id", true);
 
   if (error) return { hata: error.message };
+
+  await denetimYaz({
+    eylem: "ayarlar_degistirildi",
+    hedefTur: "settings",
+    detay: {
+      iban_degisti: onceki?.iban !== iban,
+      ...(onceki?.iban !== iban ? { eski_iban: onceki?.iban ?? null, yeni_iban: iban } : {}),
+      hesap_sahibi_degisti: onceki?.hesap_sahibi !== hesap_sahibi,
+    },
+  });
 
   revalidatePath("/ayarlar");
   revalidatePath("/", "layout");

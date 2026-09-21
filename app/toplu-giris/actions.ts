@@ -5,6 +5,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { yoneticiDegilse } from "@/lib/supabase/rol";
 import { sonOdemeTarihi } from "@/lib/format";
 import { faturaDurumunuTazele } from "@/lib/fatura-durum";
+import { denetimYaz } from "@/lib/denetim";
 
 export type ActionSonuc = { hata?: string; basari?: string };
 
@@ -112,6 +113,15 @@ export async function topluKalemUygula(
     }
 
     uygulanan++;
+  }
+
+  // Tek işlemde çok sayıda faturayı değiştiren eylem — tek tek fatura
+  // kayıtları yerine bir özet satırı yazıyoruz.
+  if (uygulanan > 0) {
+    await denetimYaz({
+      eylem: "toplu_kalem_uygulandi",
+      detay: { donem, baslik, tutar, uygulanan, hata_sayisi: hataSayisi },
+    });
   }
 
   revalidatePath("/");
