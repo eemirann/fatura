@@ -180,7 +180,7 @@ export async function incelendiIsaretle(
 
   revalidatePath(`/daire/${unitId}`);
   revalidatePath("/");
-  return {};
+  return { basari: "İncelendi ✓" };
 }
 
 /**

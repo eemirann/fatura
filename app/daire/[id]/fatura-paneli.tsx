@@ -359,26 +359,28 @@ function GonderimPaneli({
               <form action={geriAlAction}>
                 <input type="hidden" name="fatura_id" value={fatura.id} />
                 <input type="hidden" name="unit_id" value={unitId} />
-                <button
-                  type="submit"
+                <GonderButonu
+                  varyant="hat"
+                  bekleyen="İşleniyor…"
                   disabled={saltOkunur}
-                  className="rounded-lg px-3 py-2.5 sm:py-1.5 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="border-0 disabled:cursor-not-allowed"
                 >
                   Ödemeyi geri al
-                </button>
+                </GonderButonu>
               </form>
             ) : (
               <form action={odendiAction}>
                 <input type="hidden" name="fatura_id" value={fatura.id} />
                 <input type="hidden" name="unit_id" value={unitId} />
-                <button
-                  type="submit"
+                <GonderButonu
+                  varyant="hat"
+                  bekleyen="İşleniyor…"
                   disabled={saltOkunur}
                   title="Nakit ödeme veya okunamayan dekont gibi durumlar için"
-                  className="rounded-lg px-3 py-2.5 sm:py-1.5 hover:bg-emerald-50 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="border-0 hover:bg-emerald-50 hover:text-emerald-700 disabled:cursor-not-allowed"
                 >
                   Elle ödendi işaretle
-                </button>
+                </GonderButonu>
               </form>
             )}
           </div>
@@ -386,6 +388,11 @@ function GonderimPaneli({
 
         {(odendiDurum.hata || geriAlDurum.hata) && (
           <p className="text-sm text-red-700">{odendiDurum.hata ?? geriAlDurum.hata}</p>
+        )}
+        {!odendiDurum.hata && !geriAlDurum.hata && (odendiDurum.basari || geriAlDurum.basari) && (
+          <p className="text-sm text-emerald-700">
+            {odendiDurum.basari ?? geriAlDurum.basari}
+          </p>
         )}
       </div>
     </section>

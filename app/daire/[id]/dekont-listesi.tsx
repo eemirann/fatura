@@ -2,6 +2,7 @@
 
 import { useActionState, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import GonderButonu from "@/components/gonder-butonu";
 import { para, tarihTR } from "@/lib/format";
 import type { ReceiptEslesme, ReceiptKaynak } from "@/lib/types";
 import { incelendiIsaretle, type ActionSonuc } from "./actions";
@@ -87,12 +88,9 @@ export default function DekontListesi({
           <form action={incelendiAction}>
             <input type="hidden" name="fatura_id" value={faturaId} />
             <input type="hidden" name="unit_id" value={unitId} />
-            <button
-              type="submit"
-              className="rounded-lg border border-slate-300 px-3 py-2.5 sm:py-1.5 text-sm hover:bg-slate-50"
-            >
+            <GonderButonu varyant="hat" bekleyen="İşleniyor…">
               İnceledim, rozeti kaldır
-            </button>
+            </GonderButonu>
           </form>
         )}
       </div>
@@ -108,6 +106,11 @@ export default function DekontListesi({
       {incelendiDurum.hata && (
         <p className="border-b border-slate-100 bg-red-50 px-4 py-2 text-sm text-red-700">
           {incelendiDurum.hata}
+        </p>
+      )}
+      {incelendiDurum.basari && (
+        <p className="border-b border-slate-100 bg-emerald-50 px-4 py-2 text-sm text-emerald-700">
+          {incelendiDurum.basari}
         </p>
       )}
 

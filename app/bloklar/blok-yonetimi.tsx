@@ -78,12 +78,13 @@ function BlokKarti({ blok }: { blok: Block & { units: Unit[] } }) {
         </h2>
         <form action={silAction}>
           <input type="hidden" name="id" value={blok.id} />
-          <button
-            type="submit"
-            className="rounded-lg px-2 py-2 text-sm text-slate-400 hover:bg-red-50 hover:text-red-700 sm:py-1"
+          <GonderButonu
+            varyant="hat"
+            bekleyen="Siliniyor…"
+            className="border-0 px-2 text-slate-400 hover:bg-red-50 hover:text-red-700"
           >
             Bloğu sil
-          </button>
+          </GonderButonu>
         </form>
       </div>
 
@@ -204,12 +205,9 @@ function DaireDuzenle({ daire, kapat }: { daire: Unit; kapat: () => void }) {
             <span className="text-sm text-red-700">
               Bu dairenin tüm fatura ve dekont geçmişi silinecek. Emin misiniz?
             </span>
-            <button
-              type="submit"
-              className="rounded-lg bg-red-600 px-3 py-2.5 sm:py-1.5 text-sm text-white hover:bg-red-700"
-            >
+            <GonderButonu varyant="tehlike" bekleyen="Siliniyor…">
               Evet, sil
-            </button>
+            </GonderButonu>
             <button
               type="button"
               onClick={() => setSilOnay(false)}
