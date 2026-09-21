@@ -10,7 +10,9 @@ import { createServerClient } from "@supabase/ssr";
  *   /y/*       — kiracının dekont yükleme sayfası (yetki token'ın kendisidir)
  *   /api/ingest— dekont girişi (token ya da X-Ingest-Key ile kendi doğrulamasını yapar)
  *   /api/whatsapp-webhook — WAHA'dan gelen çağrı (X-Webhook-Secret ile kendi doğrulamasını yapar)
- *   /api/cron  — Vercel Cron'un tetiklediği hatırlatma işi (CRON_SECRET ile kendi doğrulamasını yapar)
+ *   /api/cron  — hatirlatma container'ının tetiklediği iş (CRON_SECRET ile kendi doğrulamasını yapar)
+ *   /api/saglik— dış izleme servisinin okuduğu durum ucu; oturumsuz yalnızca
+ *     HTTP kodu ve tek bir boolean döner, ayrıntı için CRON_SECRET ister
  *   /manifest.webmanifest, /icon — PWA dosyaları; tarayıcı bunları oturum
  *     olmadan (ör. "Ana ekrana ekle" öncesi) isteyebiliyor
  */
@@ -22,6 +24,7 @@ const ACIK_YOLLAR = [
   "/api/ingest",
   "/api/whatsapp-webhook",
   "/api/cron",
+  "/api/saglik",
   "/manifest.webmanifest",
   "/icon",
 ];

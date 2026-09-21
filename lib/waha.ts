@@ -49,6 +49,51 @@ export async function wahaMedyaIndir(
   };
 }
 
+/**
+ * WAHA oturumunun gerçek durumu.
+ *
+ * `wahaAktifMi()` yalnızca WAHA_URL'in dolu olup olmadığına bakar — oturum
+ * kopmuş olsa bile "aktif" der. Oysa WhatsApp oturumu düşünce (telefon
+ * bağlantıyı kesti, numara askıya alındı, volume kayboldu) giden mesajlar
+ * sessizce başarısız olur ve gelen dekontlar hiç ulaşmaz. Bu fonksiyon o
+ * sessiz arızayı görünür kılmak için.
+ *
+ * WAHA durumları: STOPPED · STARTING · SCAN_QR_CODE · WORKING · FAILED
+ */
+export type WahaOturumDurumu =
+  | { erisilebilir: true; calisiyor: boolean; durum: string }
+  | { erisilebilir: false; hata: string };
+
+export async function wahaOturumDurumu(): Promise<WahaOturumDurumu> {
+  const url = process.env.WAHA_URL;
+  if (!url) return { erisilebilir: false, hata: "WAHA_URL ayarlanmamış." };
+
+  const oturum = process.env.WAHA_SESSION || "default";
+  const basliklar: Record<string, string> = {};
+  const apiKey = process.env.WAHA_API_KEY;
+  if (apiKey) basliklar["X-Api-Key"] = apiKey;
+
+  try {
+    const yanit = await fetch(
+      `${url.replace(/\/+$/, "")}/api/sessions/${encodeURIComponent(oturum)}`,
+      { headers: basliklar, signal: AbortSignal.timeout(10_000) },
+    );
+
+    if (!yanit.ok) {
+      return { erisilebilir: false, hata: `WAHA ${yanit.status} döndürdü.` };
+    }
+
+    const govde = (await yanit.json()) as { status?: unknown };
+    const durum = typeof govde.status === "string" ? govde.status : "BILINMIYOR";
+    return { erisilebilir: true, calisiyor: durum === "WORKING", durum };
+  } catch (e) {
+    return {
+      erisilebilir: false,
+      hata: e instanceof Error ? e.message : "Bilinmeyen hata.",
+    };
+  }
+}
+
 export async function wahaMesajGonder(
   telefon: string | null,
   mesaj: string,

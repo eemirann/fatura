@@ -1,6 +1,6 @@
 # Sunucu tarafı servisler — üretim/VPS dağıtımı için.
 #
-#   panel       Next.js paneli (Vercel yerine burada koşar)
+#   panel       Next.js paneli
 #   waha        WhatsApp köprüsü (giden fatura mesajı, gelen dekont)
 #   dekont      Dekont okuma servisi (FastAPI + Tesseract OCR)
 #   hatirlatma  Günlük hatırlatmayı tetikleyen zamanlayıcı
@@ -11,19 +11,36 @@
 #
 # Her müşteri kendi WhatsApp Business numarasıyla bunun ayrı bir kopyasını
 # çalıştırır (bkz. README "WhatsApp otomasyonu" bölümü). Ayağa kaldırmak için
-# aşağıdaki değişkenleri kendi değerlerinizle doldurup:
+# .env dosyasını doldurup:
 #
 #   docker compose up -d
 #
 # WAHA oturum verisi `waha_data` volume'ünde kalıcı tutulur — container yeniden
 # başlasa da (VPS reboot, imaj güncellemesi vb.) QR'ı tekrar taratmanız
 # gerekmez. Dekont servisi durumsuzdur, volume istemez.
+#
+# ⚠ `docker compose down -v` WAHA oturumunu da siler: WhatsApp'ı müşterinin
+# telefonundan yeniden eşleştirmeniz gerekir. Volume'leri silmeden durdurmak
+# için `docker compose down` (yani -v olmadan) kullanın.
+
+# Docker'ın varsayılan json-file sürücüsü sınırsız büyür ve zamanla diski
+# doldurur. Tüm servisler bu ortak ayarı kullanıyor: servis başına en fazla
+# 3 x 10 MB log tutulur, eskisi dönerek silinir.
+x-log: &varsayilan-log
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   waha:
     image: devlikeapro/waha
     container_name: waha
     restart: unless-stopped
+    logging: *varsayilan-log
+    # Tek bir servisin tüm sunucuyu tüketip diğerlerini OOM ile düşürmesini
+    # engeller. Değerler 3 GB'lık VPS'e göre; tavandır, rezervasyon değildir.
+    mem_limit: 768m
     # Disariya Caddy uzerinden HTTPS ile aciliyor; bu eslesme yalnizca
     # sunucunun kendi icinden (ssh ile girip curl atmak gibi) erisim icin.
     ports:
@@ -44,12 +61,16 @@ services:
     build: ./python-dekont-servisi
     container_name: dekont
     restart: unless-stopped
+    logging: *varsayilan-log
+    # Tesseract büyük bir görseli işlerken ani yükselebildiği için diğerlerinden
+    # geniş tutuldu.
+    mem_limit: 1g
     # Bkz. waha: public erisim Caddy'den, bu yalnizca sunucu ici.
     ports:
       - "127.0.0.1:8000:8000"
     environment:
       # Zorunlu: tanımlı değilse servis hiçbir istek kabul etmez (fail-closed).
-      # Vercel'deki DEKONT_SERVICE_KEY ile birebir aynı değer olmalı.
+      # Paneldeki DEKONT_SERVICE_KEY ile birebir aynı değer olmalı.
       DEKONT_SERVICE_KEY: ${DEKONT_SERVICE_KEY:?DEKONT_SERVICE_KEY tanimlanmali}
 
   panel:
@@ -61,10 +82,18 @@ services:
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?tanimlanmali}
     container_name: panel
     restart: unless-stopped
+    logging: *varsayilan-log
+    mem_limit: 640m
     # Disariya Caddy uzerinden; bu eslesme yalnizca sunucu ici hata ayiklama.
     ports:
       - "127.0.0.1:3100:3100"
     environment:
+      # lib/format.ts'teki isoGun()/donemAnahtari() yerel saat metotlarını
+      # (getFullYear/getMonth/getDate) kullanıyor. Container UTC kalırsa her
+      # gece 00:00–03:00 arası "bugün" bir gün geride hesaplanır ve "vadesi
+      # geçti" yanlış çıkar. Node kendi ICU tz verisini taşıdığı için adlı
+      # bölge ek paket gerektirmez.
+      TZ: Europe/Istanbul
       # Panelin kendi genel adresi — kiraciya giden dekont linki ve Supabase
       # davet yonlendirmesi bundan uretilir. Calisma aninda okunur, imaja
       # gomulu degildir (bkz. lib/site-url.ts).
@@ -83,16 +112,26 @@ services:
       WAHA_WEBHOOK_SECRET: ${WAHA_WEBHOOK_SECRET:?WAHA_WEBHOOK_SECRET tanimlanmali}
       INGEST_API_KEY: ${INGEST_API_KEY-}
     depends_on:
-      - dekont
+      # Dekont servisinin imajında HEALTHCHECK var; hazır olmadan paneli
+      # başlatmak ilk dekont yüklemesinde gereksiz bir hataya yol açıyordu.
+      dekont:
+        condition: service_healthy
 
   hatirlatma:
     image: alpine:3
     container_name: hatirlatma
     restart: unless-stopped
+    logging: *varsayilan-log
+    mem_limit: 64m
     environment:
+      # Alpine'ın musl'ı adlı bölgeler için tzdata paketi ister; onu kurmamak
+      # için POSIX biçimi kullanıldı. Türkiye 2016'dan beri yaz saati
+      # uygulamıyor, kalıcı olarak UTC+3 — bu yüzden sabit ofset doğru.
+      # (POSIX'te işaret terstir: "-3" = UTC'nin 3 saat doğusu.)
+      TZ: "<+03>-3"
       CRON_SECRET: ${CRON_SECRET:?CRON_SECRET tanimlanmali}
       PANEL_URL: http://panel:3100
-      # Varsayilan her gun 09:00 (container saati UTC'dir).
+      # Varsayilan her gun 09:00 — TZ sayesinde Turkiye saatiyle.
       CRON_SAATI: ${CRON_SAATI-0 9 * * *}
     volumes:
       - ./scripts/hatirlatma-zamanlayici.sh:/hatirlatma.sh:ro
@@ -104,6 +143,8 @@ services:
     image: caddy:2-alpine
     container_name: caddy
     restart: unless-stopped
+    logging: *varsayilan-log
+    mem_limit: 128m
     ports:
       - "80:80"
       - "443:443"
@@ -117,6 +158,9 @@ services:
       # tekrar sertifika istenmez (rate limit'e takilmamak icin onemli).
       - caddy_data:/data
       - caddy_config:/config
+    # Bilerek "service_started": TLS sonlandırması bir uygulama healthcheck'ine
+    # bağlanmamalı. Panel sağlıksızken bile Caddy ayakta kalmalı ki sertifika
+    # yenilemesi ve diğer alt alan adları çalışmaya devam etsin.
     depends_on:
       - panel
       - waha

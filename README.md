@@ -226,6 +226,87 @@ cd /opt/fatura && git pull && docker compose up -d --build
 
 ---
 
+## Yedekleme ve geri yükleme
+
+**Supabase'in kendi yedeği yetmez.** O yalnızca veritabanını kapsar; dekont
+görselleri Storage'da durur ve yedeğe dahil değildir — oysa bir ödeme
+ihtilafında kanıt niteliğindeki şey tam olarak odur. WhatsApp oturumu da
+sunucudaki volume'de: kaybolursa müşterinin telefonundan yeniden eşleştirmek
+gerekir.
+
+`scripts/yedekle.sh` üçünü birden alır. Sunucuda Docker dışında bir şey
+gerektirmez.
+
+### Kurulum
+
+`.env` dosyasına veritabanı adresini ekleyin (Supabase panosu → **Project
+Settings → Database → Connection string → URI**):
+
+```bash
+SUPABASE_DB_URL=postgresql://postgres:<sifre>@db.<ref>.supabase.co:5432/postgres
+```
+
+Elle bir kez çalıştırıp doğrulayın:
+
+```bash
+cd /opt/fatura && ./scripts/yedekle.sh
+```
+
+Sonra host crontab'ına ekleyin (`crontab -e`):
+
+```
+15 3 * * * cd /opt/fatura && ./scripts/yedekle.sh >> /var/log/fatura-yedek.log 2>&1
+```
+
+Her yedek `/opt/fatura-yedek/<tarih>/` altına üç dosya bırakır:
+`veritabani.sql.gz`, `dekontlar.tar.gz`, `waha-oturum.tar.gz` (+ `MANIFEST.txt`).
+Varsayılan olarak 14 günden eski yedekler silinir (`YEDEK_SAKLAMA_GUN`).
+
+> Yedek **sunucunun kendisinde** duruyor. Sunucu tamamen giderse yedek de
+> gider. En az haftalık bir kopyayı başka bir yere (kendi bilgisayarınız veya
+> bir nesne deposu) indirin.
+
+### Geri yükleme
+
+**1) Veritabanı** — hedef projeye geri basar (`--clean --if-exists` ile dump
+alındığı için mevcut tabloları düşürüp yeniden kurar):
+
+```bash
+gzip -dc veritabani.sql.gz | docker run --rm -i postgres:17-alpine \
+    psql "postgresql://postgres:<sifre>@db.<ref>.supabase.co:5432/postgres"
+```
+
+**2) Dekont dosyaları** — arşivi açıp her dosyayı Storage'a geri yükleyin:
+
+```bash
+tar -xzf dekontlar.tar.gz
+cd dekontlar && find . -type f | sed 's|^\./||' | while read -r yol; do
+    curl -s -X POST \
+        -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+        -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+        --data-binary "@$yol" \
+        "$NEXT_PUBLIC_SUPABASE_URL/storage/v1/object/dekontlar/$yol"
+done
+```
+
+**3) WhatsApp oturumu** — container'ları durdurup volume'e geri açın:
+
+```bash
+docker compose stop waha
+docker run --rm -v fatura_waha_data:/oturum -v "$PWD":/yedek alpine:3 \
+    sh -c "rm -rf /oturum/* && tar -xzf /yedek/waha-oturum.tar.gz -C /oturum"
+docker compose start waha
+```
+
+Oturum geri gelmezse QR yerine **eşleştirme kodu** kullanın (aşağıdaki WhatsApp
+bölümü) — QR ~20 saniyede yenilendiği için uzaktan destek sırasında pratik
+değildir.
+
+> Yedeğin *varlığı* değil, *geri yüklenebildiği* önemlidir. İlk kurulumda
+> yedeği boş bir Supabase projesine geri yükleyip bir kez deneyin.
+
+---
+
 ## Maliyet
 
 | Kalem | Tutar |
@@ -254,7 +335,25 @@ npm run dev        # geliştirme sunucusu
 npm run build      # üretim derlemesi
 npm run typecheck  # tip kontrolü
 npm test           # eşleştirme ve renk kurallarının birim testleri
+
+# Dekont ayrıştırıcının testleri ayrı çalışır (npm test bunları kapsamaz):
+cd python-dekont-servisi && python -m unittest -v
+
+./scripts/yedekle.sh   # veritabanı + dekontlar + WhatsApp oturumu yedeği
 ```
+
+Sunucunun durumunu dışarıdan sormak için:
+
+```bash
+# yalnızca HTTP kodu (200 = her şey yolunda, 503 = bir bileşen bozuk)
+curl -s -o /dev/null -w '%{http_code}\n' https://panel.<alanadi>/api/saglik
+
+# hangi bileşenin bozuk olduğunu görmek için
+curl -s -H "Authorization: Bearer $CRON_SECRET" https://panel.<alanadi>/api/saglik
+```
+
+Bu ucu bir izleme servisine (UptimeRobot vb.) bağlarsanız WhatsApp oturumu
+koptuğunda müşteriden önce siz haberdar olursunuz.
 
 ---
 

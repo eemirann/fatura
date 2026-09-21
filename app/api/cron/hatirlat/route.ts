@@ -1,19 +1,39 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/supabase/admin";
 import { wahaAktifMi } from "@/lib/waha-ayristir.ts";
-import { wahaMesajGonder } from "@/lib/waha";
+import { wahaMesajGonder, wahaOturumDurumu } from "@/lib/waha";
 import { mesajOlustur, dekontLinki } from "@/lib/whatsapp";
 import { isoGun } from "@/lib/format";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// Kendi sunucumuzda bu değerin bir karşılığı yok (Next onu yalnızca Vercel'de
+// uygular); gönderim aralıkları yüzünden uzun sürebilen bu iş için yine de
+// gerçekçi bir üst sınır olarak duruyor.
+export const maxDuration = 300;
 
 /** Aynı faturaya bu kadar gün geçmeden ikinci bir hatırlatma gitmez. */
 const TEKRAR_ARALIGI_GUN = 3;
 
 /**
+ * Tek çalıştırmada gönderilecek en fazla mesaj. WhatsApp'ın toplu gönderim
+ * tespitine takılmamak için bilinçli bir tavan: kalanlar ertesi gün gider.
+ */
+const CALISMA_BASINA_TAVAN = 40;
+
+/**
+ * Mesajlar arası bekleme. Art arda, gecikmesiz gönderim klasik bot paterni
+ * olduğu ve WAHA resmî olmayan bir köprü olduğu için hesabın askıya alınma
+ * riskini doğrudan artırır. Sabit bir aralık da kendi başına düzenli bir imza
+ * bıraktığından üstüne rastgele bir pay ekleniyor.
+ */
+const MESAJ_ARASI_MS = 4_000;
+const MESAJ_ARASI_JITTER_MS = 3_000;
+
+const bekle = (ms: number) => new Promise((coz) => setTimeout(coz, ms));
+
+/**
  * Vadesi geçmiş, ödenmemiş faturalar için WhatsApp hatırlatması gönderir.
- * Vercel Cron tarafından günlük tetiklenir (bkz. vercel.json).
+ * `hatirlatma` container'ındaki crond günlük tetikler (scripts/hatirlatma-zamanlayici.sh).
  *
  * WAHA yapılandırılmamışsa (yerelde/henüz VPS yoksa) hiçbir şey yapmadan
  * "atlandı" bilgisiyle döner — otomatik gönderim olmadan mesaj atacak bir
@@ -31,6 +51,21 @@ export async function GET(request: Request) {
 
   if (!wahaAktifMi()) {
     return NextResponse.json({ tamam: true, atlandi: "waha-aktif-degil" });
+  }
+
+  // Oturum kopmuşken göndermeye çalışmak her fatura için ayrı bir başarısız
+  // istek üretir ve `son_hatirlatma_at` yazılmadığı için ertesi gün aynısı
+  // tekrarlanır. Baştan durup nedeni açıkça bildiriyoruz.
+  const oturum = await wahaOturumDurumu();
+  if (!oturum.erisilebilir || !oturum.calisiyor) {
+    return NextResponse.json(
+      {
+        tamam: false,
+        atlandi: "waha-oturum-hazir-degil",
+        detay: oturum.erisilebilir ? oturum.durum : oturum.hata,
+      },
+      { status: 503 },
+    );
   }
 
   const admin = getAdminSupabase();
@@ -55,6 +90,8 @@ export async function GET(request: Request) {
   if (!ayarlar) return NextResponse.json({ hata: "Ayarlar bulunamadı." }, { status: 500 });
 
   const sonuclar: { fatura_id: string; basari: boolean; detay?: string }[] = [];
+  let gonderimDenemesi = 0;
+  let tavandanKalan = 0;
 
   for (const f of faturalar ?? []) {
     const unit = Array.isArray(f.units) ? f.units[0] : f.units;
@@ -62,6 +99,22 @@ export async function GET(request: Request) {
       sonuclar.push({ fatura_id: f.id, basari: false, detay: "telefon-yok" });
       continue;
     }
+
+    // Tavana gelindiyse kalanları say ve bırak: `son_hatirlatma_at`
+    // yazılmadığı için bunlar yarınki çalıştırmada yeniden sıraya girer.
+    if (gonderimDenemesi >= CALISMA_BASINA_TAVAN) {
+      tavandanKalan++;
+      continue;
+    }
+
+    // İlk mesajdan sonrakilerin arasına bekleme koy.
+    if (gonderimDenemesi > 0) {
+      await bekle(
+        MESAJ_ARASI_MS + Math.floor(Math.random() * MESAJ_ARASI_JITTER_MS),
+      );
+    }
+    gonderimDenemesi++;
+
     const blockRel = Array.isArray(unit.blocks) ? unit.blocks[0] : unit.blocks;
 
     const mesaj =
@@ -95,6 +148,10 @@ export async function GET(request: Request) {
     tamam: true,
     kontrolEdilen: faturalar?.length ?? 0,
     gonderilen: sonuclar.filter((s) => s.basari).length,
+    // Tavana takılıp bu çalıştırmada gönderilmeyenler; sıfırdan büyük kalması
+    // süreklilik arz ediyorsa tavanı yükseltmek ya da cron'u sıklaştırmak
+    // gerekir.
+    tavandanKalan,
     sonuclar,
   });
 }
