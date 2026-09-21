@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import UstMenu from "@/components/ust-menu";
-import { ayarlariGetir, daireDetayi } from "@/lib/veri";
+import { ayarlariGetir, borcVerisi, daireDetayi } from "@/lib/veri";
 import { durumHesapla } from "@/lib/durum";
 import { donemAnahtari, donemEtiketi, isoGun, para, tarihTR } from "@/lib/format";
 import { dekontLinki, mesajOlustur, whatsappLinki } from "@/lib/whatsapp";
@@ -28,16 +28,19 @@ export default async function DairePage({
   const { donem: istenen } = await searchParams;
   const donem = istenen && GECERLI_DONEM.test(istenen) ? istenen : donemAnahtari();
 
-  const [daire, ayarlar, rol] = await Promise.all([
+  const bugun = isoGun();
+  const [daire, ayarlar, rol, borclar] = await Promise.all([
     daireDetayi(id, donem),
     ayarlariGetir(),
     kullaniciRolu(),
+    borcVerisi(bugun, id),
   ]);
   if (!daire) notFound();
   const saltOkunur = rol !== "yonetici";
 
-  const durum = durumHesapla(daire.invoice, isoGun());
+  const durum = durumHesapla(daire.invoice, bugun);
   const fatura = daire.invoice;
+  const borc = borclar.get(id) ?? null;
 
   // WhatsApp mesajı yalnızca kalemler girilmişse anlamlı.
   const mesaj =
@@ -110,6 +113,50 @@ export default async function DairePage({
             {durum.etiket}
           </span>
         </div>
+
+        {borc && (
+          <section className="mb-4 overflow-hidden rounded-xl border border-red-200 bg-red-50">
+            <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-red-100 px-4 py-3">
+              <h2 className="font-medium text-red-900">
+                Ödenmemiş toplam borç
+                {borc.kalemler.length > 1 && (
+                  <span className="ml-2 text-sm font-normal text-red-800">
+                    {borc.kalemler.length} dönem
+                  </span>
+                )}
+              </h2>
+              <span className="text-xl font-semibold text-red-900">
+                {para(borc.toplam)}
+              </span>
+            </div>
+
+            <ul className="divide-y divide-red-100">
+              {borc.kalemler.map((k) => (
+                <li key={k.donem}>
+                  <Link
+                    href={`/daire/${daire.id}?donem=${k.donem}`}
+                    className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 text-sm hover:bg-red-100/60"
+                  >
+                    <span className="w-32 font-medium text-red-900">
+                      {donemEtiketi(k.donem)}
+                    </span>
+                    <span className="font-medium text-red-900">{para(k.kalan)}</span>
+                    {k.odenen > 0 && (
+                      <span className="text-red-800">
+                        {para(k.toplam)} tutarın {para(k.odenen)} kadarı ödendi
+                      </span>
+                    )}
+                    <span className="ml-auto text-red-800">
+                      {k.gecikmis
+                        ? `vadesi geçti · ${tarihTR(k.son_odeme_tarihi)}`
+                        : `son ödeme ${tarihTR(k.son_odeme_tarihi)}`}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {!daire.kiraci_telefon && (
           <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -208,7 +255,7 @@ export default async function DairePage({
             <h2 className="border-b border-slate-100 px-4 py-3 font-medium">Geçmiş</h2>
             <ul className="divide-y divide-slate-100">
               {daire.gecmis.map((g) => {
-                const gDurum = durumHesapla(g, isoGun());
+                const gDurum = durumHesapla(g, bugun);
                 return (
                   <li key={g.id}>
                     <Link

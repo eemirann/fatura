@@ -45,6 +45,31 @@ export function mesajOlustur(g: MesajGirdisi): string {
   );
 }
 
+/**
+ * Hatırlatma mesajının başına konan bölüm.
+ *
+ * Tek dönem borçluysa kısa bir etiket yeter — altındaki şablon zaten o ayın
+ * dökümünü veriyor. Birden fazla dönem birikmişse asıl bilgi toplam tutardır:
+ * kiracı "bu ay 750 TL" mesajını görüp ödediğinde geçmiş borcunun durduğunu
+ * fark etmiyordu.
+ */
+export function hatirlatmaBasligi(
+  kalemler: { donem: string; kalan: number }[],
+  toplam: number,
+): string {
+  if (kalemler.length <= 1) return "⏰ Hatırlatma:\n\n";
+
+  const satirlar = kalemler
+    .map((k) => `• ${donemEtiketi(k.donem)}: ${para(k.kalan)}`)
+    .join("\n");
+
+  return (
+    `⏰ Hatırlatma\n\n` +
+    `Ödenmemiş toplam borcunuz: ${para(toplam)}\n${satirlar}\n\n` +
+    `Son dönemin dökümü:\n\n`
+  );
+}
+
 /** Şablonda kullanılabilecek yer tutucular — ayarlar sayfasında listelenir. */
 export const YER_TUTUCULAR = [
   { anahtar: "{kiraci_adi}", aciklama: "Kiracının adı" },

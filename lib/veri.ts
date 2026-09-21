@@ -1,4 +1,5 @@
 import { getServerSupabase } from "./supabase/server.ts";
+import { borcOzeti, type BorcFaturasi, type BorcOzeti } from "./borc.ts";
 import type {
   Block,
   Invoice,
@@ -66,6 +67,67 @@ export async function panelVerisi(donem: string): Promise<BlokKarti[]> {
       .sort((a, b) => a.sira - b.sira || a.kapi_no.localeCompare(b.kapi_no, "tr"))
       .map((u) => ({ ...u, invoice: faturaHaritasi.get(u.id) ?? null })),
   }));
+}
+
+/**
+ * Dairelerin birikmiş borcu — daire id'sinden borç özetine harita.
+ *
+ * Tek sorgu: yalnızca kapanmamış faturalar (`gonderildi` / `uyusmadi`)
+ * çekiliyor. `odendi` ve `taslak` zaten borç üretmediği için (bkz.
+ * lib/borc.ts) veritabanından hiç getirilmiyorlar; tipik bir binada bu,
+ * yüzlerce fatura yerine onlarcasını okumak demek.
+ *
+ * `unitId` verilirse yalnızca o daire için çalışır (daire detay sayfası).
+ */
+export async function borcVerisi(
+  bugun: string,
+  unitId?: string,
+): Promise<Map<string, BorcOzeti>> {
+  const supabase = await getServerSupabase();
+
+  let sorgu = supabase
+    .from("invoices")
+    .select("unit_id, donem, toplam, durum, son_odeme_tarihi, receipts(eslesme, okunan_tutar)")
+    .in("durum", ["gonderildi", "uyusmadi"]);
+
+  if (unitId) sorgu = sorgu.eq("unit_id", unitId);
+
+  const { data, error } = await sorgu;
+  if (error) throw new Error(error.message);
+
+  // Supabase numeric alanları çalışma zamanında string dönebiliyor; borç
+  // aritmetiğine girmeden önce sayıya çeviriyoruz.
+  const daireBasina = new Map<string, BorcFaturasi[]>();
+  for (const f of data ?? []) {
+    const satir = f as unknown as {
+      unit_id: string;
+      donem: string;
+      toplam: number | string;
+      durum: Invoice["durum"];
+      son_odeme_tarihi: string;
+      receipts: Pick<Receipt, "eslesme" | "okunan_tutar">[] | null;
+    };
+
+    const liste = daireBasina.get(satir.unit_id) ?? [];
+    liste.push({
+      donem: satir.donem,
+      toplam: Number(satir.toplam ?? 0),
+      durum: satir.durum,
+      son_odeme_tarihi: satir.son_odeme_tarihi,
+      dekontlar: (satir.receipts ?? []).map((r) => ({
+        eslesme: r.eslesme,
+        okunan_tutar: r.okunan_tutar === null ? null : Number(r.okunan_tutar),
+      })),
+    });
+    daireBasina.set(satir.unit_id, liste);
+  }
+
+  const sonuc = new Map<string, BorcOzeti>();
+  for (const [id, faturalar] of daireBasina) {
+    const ozet = borcOzeti(faturalar, bugun);
+    if (ozet.toplam > 0) sonuc.set(id, ozet);
+  }
+  return sonuc;
 }
 
 export type BildirimDaire = Unit & {

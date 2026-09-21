@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/supabase/admin";
 import { wahaAktifMi } from "@/lib/waha-ayristir.ts";
 import { wahaMesajGonder, wahaOturumDurumu } from "@/lib/waha";
-import { mesajOlustur, dekontLinki } from "@/lib/whatsapp";
+import { mesajOlustur, dekontLinki, hatirlatmaBasligi } from "@/lib/whatsapp";
+import { borcOzeti } from "@/lib/borc";
 import { isoGun } from "@/lib/format";
+import type { ReceiptEslesme } from "@/lib/types";
 
 export const runtime = "nodejs";
 // Kendi sunucumuzda bu değerin bir karşılığı yok (Next onu yalnızca Vercel'de
@@ -74,29 +76,70 @@ export async function GET(request: Request) {
     Date.now() - TEKRAR_ARALIGI_GUN * 86_400_000,
   ).toISOString();
 
+  // Vadesi geçmiş olanları süzmek yerine dairenin KAPANMAMIŞ TÜM dönemlerini
+  // çekiyoruz: hatırlatma artık toplam borcu da yazdığı için eksik veriyle
+  // kurulamıyor (bkz. lib/borc.ts).
   const [{ data: ayarlar }, { data: faturalar, error }] = await Promise.all([
     admin.from("settings").select("iban, hesap_sahibi, mesaj_sablonu").single(),
     admin
       .from("invoices")
       .select(
-        "id, donem, toplam, son_odeme_tarihi, public_token, units(kapi_no, kiraci_adi, kiraci_telefon, blocks(ad)), invoice_items(baslik, tutar)",
+        "id, unit_id, donem, toplam, durum, son_odeme_tarihi, son_hatirlatma_at, public_token, units(kapi_no, kiraci_adi, kiraci_telefon, blocks(ad)), invoice_items(baslik, tutar), receipts(eslesme, okunan_tutar)",
       )
-      .in("durum", ["gonderildi", "uyusmadi"])
-      .lt("son_odeme_tarihi", bugun)
-      .or(`son_hatirlatma_at.is.null,son_hatirlatma_at.lt.${tekrarSiniri}`),
+      .in("durum", ["gonderildi", "uyusmadi"]),
   ]);
 
   if (error) return NextResponse.json({ hata: error.message }, { status: 500 });
   if (!ayarlar) return NextResponse.json({ hata: "Ayarlar bulunamadı." }, { status: 500 });
 
-  const sonuclar: { fatura_id: string; basari: boolean; detay?: string }[] = [];
+  type FaturaSatiri = {
+    id: string;
+    unit_id: string;
+    donem: string;
+    toplam: number | string;
+    durum: "gonderildi" | "uyusmadi";
+    son_odeme_tarihi: string;
+    son_hatirlatma_at: string | null;
+    public_token: string;
+    units:
+      | { kapi_no: string; kiraci_adi: string | null; kiraci_telefon: string | null; blocks: { ad: string } | { ad: string }[] | null }
+      | { kapi_no: string; kiraci_adi: string | null; kiraci_telefon: string | null; blocks: { ad: string } | { ad: string }[] | null }[]
+      | null;
+    invoice_items: { baslik: string; tutar: number }[] | null;
+    receipts: { eslesme: ReceiptEslesme; okunan_tutar: number | null }[] | null;
+  };
+
+  // Daire başına grupla. Üç ayı geciken bir kiracıya bugüne kadar ÜÇ AYRI
+  // mesaj gidiyordu — hem kafa karıştırıcı hem de arka arkaya çok mesaj
+  // olduğu için ban riskini artırıyordu. Artık daire başına tek mesaj.
+  const daireler = new Map<string, FaturaSatiri[]>();
+  for (const f of (faturalar ?? []) as unknown as FaturaSatiri[]) {
+    const liste = daireler.get(f.unit_id) ?? [];
+    liste.push(f);
+    daireler.set(f.unit_id, liste);
+  }
+
+  const sonuclar: { unit_id: string; basari: boolean; detay?: string }[] = [];
   let gonderimDenemesi = 0;
   let tavandanKalan = 0;
+  let ilgilenenDaire = 0;
 
-  for (const f of faturalar ?? []) {
-    const unit = Array.isArray(f.units) ? f.units[0] : f.units;
+  for (const [unitId, dairefaturalari] of daireler) {
+    // Vadesi geçmiş ve tekrar aralığını doldurmuş olanlar — hatırlatmayı
+    // tetikleyen küme.
+    const tetikleyenler = dairefaturalari.filter(
+      (f) =>
+        f.son_odeme_tarihi < bugun &&
+        (f.son_hatirlatma_at === null || f.son_hatirlatma_at < tekrarSiniri),
+    );
+    if (tetikleyenler.length === 0) continue;
+
+    ilgilenenDaire++;
+
+    const ilk = dairefaturalari[0];
+    const unit = Array.isArray(ilk.units) ? ilk.units[0] : ilk.units;
     if (!unit?.kiraci_telefon) {
-      sonuclar.push({ fatura_id: f.id, basari: false, detay: "telefon-yok" });
+      sonuclar.push({ unit_id: unitId, basari: false, detay: "telefon-yok" });
       continue;
     }
 
@@ -115,38 +158,66 @@ export async function GET(request: Request) {
     }
     gonderimDenemesi++;
 
+    const borc = borcOzeti(
+      dairefaturalari.map((f) => ({
+        donem: f.donem,
+        toplam: Number(f.toplam),
+        durum: f.durum,
+        son_odeme_tarihi: f.son_odeme_tarihi,
+        dekontlar: (f.receipts ?? []).map((r) => ({
+          eslesme: r.eslesme,
+          okunan_tutar: r.okunan_tutar === null ? null : Number(r.okunan_tutar),
+        })),
+      })),
+      bugun,
+    );
+
+    // Şablon en yeni dönem üzerinden doldurulur: IBAN, hesap sahibi ve dekont
+    // linki oradan geliyor. Toplam borç varsa başlıkta ayrıca özetleniyor.
+    const enYeni = [...dairefaturalari].sort((a, b) =>
+      b.donem.localeCompare(a.donem),
+    )[0];
     const blockRel = Array.isArray(unit.blocks) ? unit.blocks[0] : unit.blocks;
 
     const mesaj =
-      "⏰ Hatırlatma:\n\n" +
+      hatirlatmaBasligi(borc.kalemler, borc.toplam) +
       mesajOlustur({
         sablon: ayarlar.mesaj_sablonu,
         kiraciAdi: unit.kiraci_adi,
         blokAdi: blockRel?.ad ?? "",
         kapiNo: unit.kapi_no,
-        donem: f.donem,
-        kalemler: f.invoice_items ?? [],
-        toplam: Number(f.toplam),
-        sonOdemeTarihi: f.son_odeme_tarihi,
+        donem: enYeni.donem,
+        kalemler: enYeni.invoice_items ?? [],
+        toplam: Number(enYeni.toplam),
+        sonOdemeTarihi: enYeni.son_odeme_tarihi,
         iban: ayarlar.iban,
         hesapSahibi: ayarlar.hesap_sahibi,
-        dekontLinki: dekontLinki(f.public_token),
+        dekontLinki: dekontLinki(enYeni.public_token),
       });
 
     const sonuc = await wahaMesajGonder(unit.kiraci_telefon, mesaj);
-    sonuclar.push({ fatura_id: f.id, basari: sonuc.basari, detay: sonuc.basari ? undefined : sonuc.hata });
+    sonuclar.push({
+      unit_id: unitId,
+      basari: sonuc.basari,
+      detay: sonuc.basari ? undefined : sonuc.hata,
+    });
 
     if (sonuc.basari) {
+      // Tek mesaj tüm gecikmiş dönemleri kapsadığı için hepsinin damgası
+      // birden güncelleniyor; aksi hâlde yarın aynı daire tekrar sıraya girerdi.
       await admin
         .from("invoices")
         .update({ son_hatirlatma_at: new Date().toISOString() })
-        .eq("id", f.id);
+        .in(
+          "id",
+          tetikleyenler.map((f) => f.id),
+        );
     }
   }
 
   return NextResponse.json({
     tamam: true,
-    kontrolEdilen: faturalar?.length ?? 0,
+    ilgilenenDaire,
     gonderilen: sonuclar.filter((s) => s.basari).length,
     // Tavana takılıp bu çalıştırmada gönderilmeyenler; sıfırdan büyük kalması
     // süreklilik arz ediyorsa tavanı yükseltmek ya da cron'u sıklaştırmak

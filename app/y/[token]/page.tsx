@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { getAdminSupabase } from "@/lib/supabase/admin";
-import { donemEtiketi, para, tarihTR } from "@/lib/format";
-import type { InvoiceItem } from "@/lib/types";
+import { donemEtiketi, isoGun, para, tarihTR } from "@/lib/format";
+import { borcOzeti, type BorcFaturasi } from "@/lib/borc";
+import type { Invoice, InvoiceItem, Receipt } from "@/lib/types";
 import KiraciYukleme from "./kiraci-yukleme";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +27,7 @@ export default async function KiraciSayfasi({
   const { data: fatura } = await admin
     .from("invoices")
     .select(
-      "id, donem, son_odeme_tarihi, toplam, durum, invoice_items(baslik, tutar, sira), units(kapi_no, kiraci_adi, blocks(ad))",
+      "id, unit_id, donem, son_odeme_tarihi, toplam, durum, invoice_items(baslik, tutar, sira), units(kapi_no, kiraci_adi, blocks(ad))",
     )
     .eq("public_token", token)
     .maybeSingle();
@@ -37,6 +38,40 @@ export default async function KiraciSayfasi({
     .from("settings")
     .select("iban, hesap_sahibi")
     .single();
+
+  // Bu dairenin kapanmamış TÜM dönemleri. Kiracı bugüne kadar yalnızca
+  // kendisine link gönderilen tek ayı görebiliyordu; üç ay biriken borçta
+  // hiçbir yerde toplam yazmıyordu. Kapsam daire ile sınırlı — kiracı zaten
+  // kendi dairesinin borcunu görüyor, başka daireye erişim yok.
+  const { data: acikFaturalar } = await admin
+    .from("invoices")
+    .select("donem, toplam, durum, son_odeme_tarihi, receipts(eslesme, okunan_tutar)")
+    .eq("unit_id", fatura.unit_id)
+    .in("durum", ["gonderildi", "uyusmadi"]);
+
+  const borc = borcOzeti(
+    ((acikFaturalar ?? []) as unknown as {
+      donem: string;
+      toplam: number | string;
+      durum: Invoice["durum"];
+      son_odeme_tarihi: string;
+      receipts: Pick<Receipt, "eslesme" | "okunan_tutar">[] | null;
+    }[]).map<BorcFaturasi>((f) => ({
+      donem: f.donem,
+      toplam: Number(f.toplam ?? 0),
+      durum: f.durum,
+      son_odeme_tarihi: f.son_odeme_tarihi,
+      dekontlar: (f.receipts ?? []).map((r) => ({
+        eslesme: r.eslesme,
+        okunan_tutar: r.okunan_tutar === null ? null : Number(r.okunan_tutar),
+      })),
+    })),
+    isoGun(),
+  );
+
+  // Yalnızca gösterilen aydan fazlası varsa anlamlı: tek dönem borçluysa
+  // zaten aşağıdaki fatura dökümü aynı bilgiyi veriyor.
+  const birdenFazlaDonem = borc.kalemler.length > 1;
 
   const daire = fatura.units as unknown as {
     kapi_no: string;
@@ -88,6 +123,40 @@ export default async function KiraciSayfasi({
             <dd className="text-lg font-semibold">{para(Number(fatura.toplam))}</dd>
           </div>
         </dl>
+
+        {birdenFazlaDonem && (
+          <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <p className="font-medium text-red-900">Toplam ödenmemiş borcunuz</p>
+              <p className="text-xl font-semibold text-red-900">{para(borc.toplam)}</p>
+            </div>
+
+            <ul className="mt-3 divide-y divide-red-100 border-t border-red-100">
+              {borc.kalemler.map((k) => (
+                <li
+                  key={k.donem}
+                  className="flex justify-between gap-4 py-2 text-sm text-red-900"
+                >
+                  <span>
+                    {donemEtiketi(k.donem)}
+                    {k.odenen > 0 && (
+                      <span className="text-red-700">
+                        {" "}
+                        · {para(k.odenen)} ödendi
+                      </span>
+                    )}
+                  </span>
+                  <span className="font-medium">{para(k.kalan)}</span>
+                </li>
+              ))}
+            </ul>
+
+            <p className="mt-3 text-xs text-red-800">
+              Aşağıdaki hesaba toplam tutarı tek seferde ödeyebilir ya da ay ay
+              ödeyip her biri için dekont gönderebilirsiniz.
+            </p>
+          </div>
+        )}
 
         <div className="mt-5 space-y-3 rounded-xl bg-slate-50 p-4 text-sm">
           <Satir etiket="Son ödeme tarihi" deger={tarihTR(fatura.son_odeme_tarihi)} />

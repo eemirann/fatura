@@ -1,7 +1,8 @@
 import Link from "next/link";
 import UstMenu from "@/components/ust-menu";
 import DonemSecici from "@/components/donem-secici";
-import { panelVerisi, type DaireKarti } from "@/lib/veri";
+import { borcVerisi, panelVerisi, type DaireKarti } from "@/lib/veri";
+import { devredenBorc } from "@/lib/borc";
 import PanelSekmeleri, { type PanelFiltresi } from "@/components/panel-sekmeleri";
 import { durumHesapla, ilgilenmeliMi, panelGrubu, type DurumKodu } from "@/lib/durum";
 import { donemAnahtari, donemEtiketi, isoGun, para } from "@/lib/format";
@@ -23,8 +24,11 @@ export default async function PanelPage({
     ? (istenenFiltre as PanelFiltresi)
     : "hepsi";
 
-  const bloklar = await panelVerisi(donem);
   const bugun = isoGun();
+  const [bloklar, borclar] = await Promise.all([
+    panelVerisi(donem),
+    borcVerisi(bugun),
+  ]);
 
   const daireler = bloklar.flatMap((b) => b.units).filter((d) => d.aktif);
   const durumlar = daireler.map((d) => durumHesapla(d.invoice, bugun).kod);
@@ -48,6 +52,18 @@ export default async function PanelPage({
   const tahsilEdilen = daireler
     .filter((d) => d.invoice?.durum === "odendi")
     .reduce((t, d) => t + Number(d.invoice?.toplam ?? 0), 0);
+
+  // Seçili ayın dışından gelen, gözden kaçmaya en müsait borç. Bu ayın
+  // faturası zaten kartlarda görünüyor; asıl kaybolan eski aylar.
+  const devredenler = daireler
+    .map((d) => ({
+      daire: d,
+      devreden: borclar.has(d.id) ? devredenBorc(borclar.get(d.id)!, donem) : 0,
+    }))
+    .filter((x) => x.devreden > 0);
+
+  const devredenToplam = devredenler.reduce((t, x) => t + x.devreden, 0);
+  const devredenHaritasi = new Map(devredenler.map((x) => [x.daire.id, x.devreden]));
 
   return (
     <>
@@ -90,6 +106,17 @@ export default async function PanelPage({
           <Ozet baslik="Vadesi geçen" deger={String(sayac("gecikti"))} vurgu="red" />
         </div>
 
+        {devredenToplam > 0 && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+            <strong>Geçmiş dönemlerden devreden borç: {para(devredenToplam)}</strong>
+            <span className="text-red-800">
+              {" "}
+              · {devredenler.length} daire. Bu tutar {donemEtiketi(donem)}{" "}
+              faturalarına dahil değildir.
+            </span>
+          </div>
+        )}
+
         <PanelSekmeleri aktif={filtre} donem={donem} sayilar={sekmeSayilari} />
 
         {bloklar.length === 0 ? (
@@ -122,7 +149,13 @@ export default async function PanelPage({
                   ) : (
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                       {aktifDaireler.map((daire) => (
-                        <DaireKutusu key={daire.id} daire={daire} donem={donem} bugun={bugun} />
+                        <DaireKutusu
+                          key={daire.id}
+                          daire={daire}
+                          donem={donem}
+                          bugun={bugun}
+                          devreden={devredenHaritasi.get(daire.id) ?? 0}
+                        />
                       ))}
                     </div>
                   )}
@@ -168,10 +201,13 @@ function DaireKutusu({
   daire,
   donem,
   bugun,
+  devreden,
 }: {
   daire: DaireKarti;
   donem: string;
   bugun: string;
+  /** Seçili dönem dışından birikmiş borç; 0 ise gösterilmez. */
+  devreden: number;
 }) {
   const durum = durumHesapla(daire.invoice, bugun);
 
@@ -204,6 +240,12 @@ function DaireKutusu({
       </p>
 
       <p className="mt-0.5 text-xs text-slate-500">{durum.etiket}</p>
+
+      {devreden > 0 && (
+        <p className="mt-1 text-xs font-medium text-red-700">
+          + {para(devreden)} geçmiş borç
+        </p>
+      )}
     </Link>
   );
 }
