@@ -1,19 +1,12 @@
 import Link from "next/link";
 import CikisButonu from "./cikis-butonu";
 
-type Sekme =
-  | "panel"
-  | "bloklar"
-  | "toplu-giris"
-  | "giderler"
-  | "bildirimler"
-  | "ayarlar";
+type Sekme = "panel" | "bloklar" | "toplu-giris" | "bildirimler" | "ayarlar";
 
 const SEKMELER: { href: string; etiket: string; ikon: string; anahtar: Sekme }[] = [
   { href: "/", etiket: "Panel", ikon: "📋", anahtar: "panel" },
   { href: "/bloklar", etiket: "Blok & Daire", ikon: "🏢", anahtar: "bloklar" },
   { href: "/toplu-giris", etiket: "Toplu Giriş", ikon: "➕", anahtar: "toplu-giris" },
-  { href: "/giderler", etiket: "Gider & Kasa", ikon: "💰", anahtar: "giderler" },
   { href: "/bildirimler", etiket: "Bildirimler", ikon: "🔔", anahtar: "bildirimler" },
   { href: "/ayarlar", etiket: "Ayarlar", ikon: "⚙️", anahtar: "ayarlar" },
 ];

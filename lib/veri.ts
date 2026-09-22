@@ -1,9 +1,7 @@
 import { getServerSupabase } from "./supabase/server.ts";
 import { borcOzeti, type BorcFaturasi, type BorcOzeti } from "./borc.ts";
-import { kasaOzeti, type KasaOzeti, type TahsilatFaturasi } from "./kasa.ts";
 import type {
   Block,
-  Expense,
   Invoice,
   InvoiceItem,
   Receipt,
@@ -130,56 +128,6 @@ export async function borcVerisi(
     if (ozet.toplam > 0) sonuc.set(id, ozet);
   }
   return sonuc;
-}
-
-/**
- * Kasa sayfası: giderler + bakiyeyi çıkarmak için tahsilat verisi.
- *
- * Tahsilat, faturaların TÜM dönemleri üzerinden hesaplanıyor; kasa bir ayın
- * değil apartmanın toplam durumudur. Yalnızca hesaba giren alanlar
- * çekiliyor (toplam, durum ve dekont tutarları), fatura kalemleri değil.
- */
-export async function kasaVerisi(): Promise<{
-  ozet: KasaOzeti;
-  giderler: Expense[];
-}> {
-  const supabase = await getServerSupabase();
-
-  const [faturalarSonuc, giderlerSonuc] = await Promise.all([
-    supabase.from("invoices").select("toplam, durum, receipts(eslesme, okunan_tutar)"),
-    supabase.from("expenses").select("*").order("tarih", { ascending: false }),
-  ]);
-
-  if (faturalarSonuc.error) throw new Error(faturalarSonuc.error.message);
-  if (giderlerSonuc.error) {
-    throw new Error(
-      "Giderler okunamadı. supabase/migrations/0007_giderler.sql çalıştırıldı mı? " +
-        giderlerSonuc.error.message,
-    );
-  }
-
-  // Supabase numeric alanları çalışma zamanında string dönebiliyor.
-  const faturalar: TahsilatFaturasi[] = (
-    (faturalarSonuc.data ?? []) as unknown as {
-      toplam: number | string;
-      durum: Invoice["durum"];
-      receipts: Pick<Receipt, "eslesme" | "okunan_tutar">[] | null;
-    }[]
-  ).map((f) => ({
-    toplam: Number(f.toplam ?? 0),
-    durum: f.durum,
-    dekontlar: (f.receipts ?? []).map((r) => ({
-      eslesme: r.eslesme,
-      okunan_tutar: r.okunan_tutar === null ? null : Number(r.okunan_tutar),
-    })),
-  }));
-
-  const giderler = ((giderlerSonuc.data ?? []) as Expense[]).map((g) => ({
-    ...g,
-    tutar: Number(g.tutar),
-  }));
-
-  return { ozet: kasaOzeti(faturalar, giderler), giderler };
 }
 
 export type BildirimDaire = Unit & {

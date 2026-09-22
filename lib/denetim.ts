@@ -20,14 +20,12 @@ export type DenetimEylemi =
   | "toplu_kalem_uygulandi"
   | "blok_silindi"
   | "daire_silindi"
-  | "gider_eklendi"
-  | "gider_silindi"
   | "ayarlar_degistirildi"
   | "kullanici_davet_edildi";
 
 type DenetimGirdisi = {
   eylem: DenetimEylemi;
-  hedefTur?: "invoice" | "unit" | "block" | "expense" | "settings" | "user";
+  hedefTur?: "invoice" | "unit" | "block" | "settings" | "user";
   hedefId?: string;
   /** Sonradan "ne değişmişti" sorusuna cevap verecek kadar bağlam. */
   detay?: Record<string, unknown>;
