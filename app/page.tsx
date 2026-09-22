@@ -214,8 +214,16 @@ function DaireKutusu({
   return (
     <Link
       href={`/daire/${daire.id}?donem=${donem}`}
-      className={`relative block rounded-xl border p-4 transition-colors ${durum.kart}`}
+      className={`relative block overflow-hidden rounded-xl border p-4 transition-colors ${durum.kart}`}
     >
+      {/* eslint-disable-next-line @next/next/no-img-element -- sabit statik varlık, next/image optimizasyonu gereksiz */}
+      <img
+        src="/daire-filigran.png"
+        alt=""
+        aria-hidden="true"
+        className="pointer-events-none absolute -right-5 -bottom-6 h-28 w-auto opacity-10 select-none"
+      />
+
       {durum.rozet && (
         <span
           title="Henüz incelemediniz"
@@ -226,23 +234,23 @@ function DaireKutusu({
         </span>
       )}
 
-      <div className="flex items-center gap-2">
+      <div className="relative flex items-center gap-2">
         <span className={`h-2 w-2 shrink-0 rounded-full ${durum.nokta}`} />
         <span className="font-semibold">{daire.kapi_no}</span>
       </div>
 
-      <p className="mt-1 truncate text-sm text-slate-600">
+      <p className="relative mt-1 truncate text-sm text-slate-600">
         {daire.kiraci_adi ?? <span className="text-slate-400">kiracı girilmedi</span>}
       </p>
 
-      <p className="mt-2 text-sm font-medium">
+      <p className="relative mt-2 text-sm font-medium">
         {daire.invoice ? para(daire.invoice.toplam) : <span className="text-slate-400">—</span>}
       </p>
 
-      <p className="mt-0.5 text-xs text-slate-500">{durum.etiket}</p>
+      <p className="relative mt-0.5 text-xs text-slate-500">{durum.etiket}</p>
 
       {devreden > 0 && (
-        <p className="mt-1 text-xs font-medium text-red-700">
+        <p className="relative mt-1 text-xs font-medium text-red-700">
           + {para(devreden)} geçmiş borç
         </p>
       )}
