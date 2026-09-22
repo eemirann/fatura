@@ -32,6 +32,14 @@ class DekontSemasi(BaseModel):
     banka: Optional[str] = Field(
         default=None, description="Dekontu düzenleyen banka. Yoksa null."
     )
+    referans_no: Optional[str] = Field(
+        default=None,
+        description=(
+            "Bankanın işleme verdiği tekil numara (Referans No, İşlem No, "
+            "Dekont No, Fiş No, Sorgu No gibi etiketlerle geçer). Aynı dekontun "
+            "tekrar kullanılıp kullanılmadığını denetlemek için. Emin olunamıyorsa null."
+        ),
+    )
     aciklama: str = Field(
         description=(
             "okunabilir=false ise nedenini tek cümleyle Türkçe yaz. "

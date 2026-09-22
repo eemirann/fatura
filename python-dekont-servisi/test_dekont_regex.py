@@ -344,6 +344,21 @@ class DekontAyristirTest(unittest.TestCase):
         self.assertTrue(_kodlama_bozuk_mu(bozuk))
         self.assertFalse(_kodlama_bozuk_mu(IKI_SUTUNLU_DEKONT))
 
+    # --------------------------------------------------- referans/işlem no
+
+    def test_is_bankasi_referans_numarasi_okunur(self):
+        """Tekrar-kullanım tespitinin dayandığı alan (bkz. app/api/ingest)."""
+        s = dekont_ayristir(IS_BANKASI_EDEKONT)
+        self.assertEqual(s.referans_no, "20.09.2026/111/0000/0000")
+
+    def test_referans_no_yoksa_none_doner(self):
+        s = dekont_ayristir(ORNEK_DEKONT)
+        self.assertIsNone(s.referans_no)
+
+    def test_dekont_no_etiketi_referans_olarak_okunur(self):
+        s = dekont_ayristir("DEKONT\nDekont No: A2026091200012345\nİşlem Tutarı: 500,00 TL")
+        self.assertEqual(s.referans_no, "A2026091200012345")
+
 
 if __name__ == "__main__":
     unittest.main()

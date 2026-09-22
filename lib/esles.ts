@@ -55,10 +55,31 @@ export function kalemDegisimindeDurum(
   return gonderildiMi ? "gonderildi" : "taslak";
 }
 
-function ibanSonHane(iban: string | null | undefined, n = 4): string | null {
+function ibanNormalize(iban: string | null | undefined): string | null {
   if (!iban) return null;
   const temiz = iban.replace(/\s/g, "").toUpperCase();
-  return temiz.length >= n ? temiz.slice(-n) : null;
+  return temiz || null;
+}
+
+/**
+ * IBAN'ın MOD-97 sağlama toplamını (ISO 7064) hiçbir dış servise ihtiyaç
+ * duymadan doğrular. Ülke kodu + kontrol basamağı sona taşınır, harfler
+ * sayıya çevrilir (A=10…Z=35), kalan sayının mod 97'si 1 ise IBAN geçerlidir.
+ *
+ * Bu, OCR'ın okuduğu IBAN'ın gerçekten bir IBAN biçimine uyup uymadığını
+ * ayırt eder: uymuyorsa büyük ihtimalle OCR hatasıdır, sahtecilik değil —
+ * bu yüzden yalnızca GEÇERLİ bir IBAN, ayarlardakinden farklıysa fatura
+ * reddedilir (bkz. eslestir).
+ */
+function ibanChecksumGecerliMi(iban: string): boolean {
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(iban)) return false;
+  const donmus = iban.slice(4) + iban.slice(0, 4);
+  const sayisal = donmus.replace(/[A-Z]/g, (h) => String(h.charCodeAt(0) - 55));
+  try {
+    return BigInt(sayisal) % 97n === 1n;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -135,13 +156,27 @@ export function eslestir(
   const fark = toplamSimdi - beklenenTutar;
   const uyarilar: string[] = [];
 
-  // IBAN kontrolü eşleşmeyi bloklamaz — yalnızca dikkat çeker. Kiracı
-  // ödemeyi başka bir hesaba yapmış olabilir.
-  const beklenenSon = ibanSonHane(ayarlardakiIban);
-  const okunanSon = ibanSonHane(okuma.alici_iban);
-  if (beklenenSon && okunanSon && beklenenSon !== okunanSon) {
+  // IBAN kontrolü, tarih ve tutar karşılaştırmasından ÖNCE: para başka bir
+  // hesaba gittiyse tutarın tutması hiçbir şey ifade etmiyor. Yalnızca MOD-97
+  // sağlama toplamına göre GEÇERLİ biçimli bir IBAN farklıysa reddedilir —
+  // geçersiz sağlama toplamı büyük ihtimalle OCR hatasıdır, sahtecilik değil,
+  // o durumda yalnızca uyarı eklenir ve akış devam eder.
+  const okunanIban = ibanNormalize(okuma.alici_iban);
+  const ayarIban = ibanNormalize(ayarlardakiIban);
+  if (okunanIban && ayarIban && okunanIban !== ayarIban) {
+    if (ibanChecksumGecerliMi(okunanIban)) {
+      return {
+        eslesme: "iban_uyusmadi",
+        yeniDurum: "uyusmadi",
+        aciklama: [
+          `Dekonttaki alıcı IBAN'ı (…${okunanIban.slice(-4)}) ayarlardaki IBAN'la uyuşmuyor.`,
+          "Bu ödeme başka bir hesaba yapılmış olabilir; fatura otomatik kapatılmadı.",
+          "Kontrol edip gerekirse elle ödendi işaretleyin.",
+        ].join(" "),
+      };
+    }
     uyarilar.push(
-      `Dikkat: alıcı IBAN'ı ayarlardakinden farklı görünüyor (…${okunanSon}).`,
+      `Dikkat: okunan IBAN geçersiz biçimli (…${okunanIban.slice(-4)}), OCR hatası olabilir.`,
     );
   }
 

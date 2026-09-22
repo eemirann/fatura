@@ -157,6 +157,24 @@ function SonucKutusu({ sonuc, yeniden }: { sonuc: Sonuc; yeniden: () => void }) 
         "dosyayı seçmiş olabilirsiniz — doğru dekontu gönderirseniz hemen " +
         "işlenir. Bu dekont doğruysa ev sahibiniz kontrol edip onaylayacak.",
     },
+    iban_uyusmadi: {
+      sinif: "border-red-200 bg-red-50 text-red-900",
+      baslik: "Dekontunuz alındı, ancak alıcı hesabı uyuşmuyor.",
+      // Kiracıyı suçlayıcı bir dil kurmuyoruz: yanlış hesaba göndermiş
+      // olabilir ya da OCR başka bir alanı IBAN sanmış olabilir.
+      metin:
+        "Dekonttaki alıcı IBAN'ı beklenen hesapla uyuşmuyor. Doğru hesaba " +
+        "gönderdiğinizden emin değilseniz kontrol edin; ev sahibiniz de " +
+        "ayrıca inceleyecek.",
+    },
+    tekrar_kullanilmis: {
+      sinif: "border-red-200 bg-red-50 text-red-900",
+      baslik: "Dekontunuz alındı, ancak daha önce kullanılmış görünüyor.",
+      metin:
+        "Bu dekontun işlem numarası başka bir ödeme için daha önce " +
+        "kaydedilmiş. Yanlış dosyayı seçmiş olabilirsiniz — doğru dekontu " +
+        "gönderirseniz hemen işlenir. Ev sahibiniz de kontrol edecek.",
+    },
     unreadable: {
       sinif: "border-slate-200 bg-slate-50 text-slate-800",
       baslik: "Dekontunuz alındı.",

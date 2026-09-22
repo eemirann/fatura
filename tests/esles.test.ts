@@ -84,11 +84,53 @@ test("TL yazımı da kabul edilir", () => {
   assert.equal(eslestir(okuma({ para_birimi: "TL" }), 1650, IBAN).eslesme, "matched");
 });
 
-test("farklı IBAN eşleşmeyi bozmaz, sadece uyarı ekler", () => {
+// -------------------------------------------------------- IBAN kontrolü (MOD-97)
+//
+// Bir dekonttaki alıcı IBAN'ı ayarlardakinden farklıysa, tutar/tarih tutsa
+// bile ödeme başka bir hesaba yapılmış olabilir. Yalnızca MOD-97 sağlama
+// toplamına göre GEÇERLİ biçimli bir IBAN bloklar — geçersiz sağlama toplamı
+// büyük ihtimalle OCR hatasıdır, sahtecilik değil.
+
+// Gerçek bir Akbank dekontundan (IKI_SUTUNLU_DEKONT fixture) alınmış, MOD-97
+// sağlaması geçerli, ana IBAN'dan farklı ikinci bir IBAN.
+const BASKA_GECERLI_IBAN = "TR210006400000122211362514";
+
+test("geçerli biçimli ama farklı IBAN faturayı otomatik kapatmaz", () => {
+  const s = eslestir(okuma({ alici_iban: BASKA_GECERLI_IBAN }), 1650, IBAN);
+  assert.equal(s.eslesme, "iban_uyusmadi");
+  assert.equal(s.yeniDurum, "uyusmadi");
+  assert.match(s.aciklama, /IBAN/);
+});
+
+test("tutar tutsa da farklı IBAN'lı dekont toplanan tutara girmez", () => {
+  assert.equal(
+    toplananTutar([
+      { eslesme: "matched", okunan_tutar: 500 },
+      { eslesme: "iban_uyusmadi", okunan_tutar: 1000 },
+    ]),
+    500,
+  );
+});
+
+test("geçersiz biçimli (checksum tutmayan) IBAN bloklamaz, sadece uyarı ekler", () => {
+  // OCR'ın yanlış okuduğu bir IBAN gerçek bir sahtecilik kanıtı değildir.
   const s = eslestir(okuma({ alici_iban: "TR999999999999999999999999" }), 1650, IBAN);
   assert.equal(s.eslesme, "matched");
   assert.equal(s.yeniDurum, "odendi");
   assert.match(s.aciklama, /IBAN/);
+  assert.match(s.aciklama, /geçersiz/i);
+});
+
+test("IBAN kontrolü tarih kontrolünden önce çalışır", () => {
+  // Hem IBAN hem tarih uyuşmuyorsa, kesin olan (IBAN) sonucu belirler.
+  const s = eslestir(
+    okuma({ alici_iban: BASKA_GECERLI_IBAN, tarih: "2026-06-12" }),
+    1650,
+    IBAN,
+    0,
+    "2026-09-01",
+  );
+  assert.equal(s.eslesme, "iban_uyusmadi");
 });
 
 test("IBAN boşluklu yazılmışsa da doğru karşılaştırılır", () => {
@@ -97,6 +139,12 @@ test("IBAN boşluklu yazılmışsa da doğru karşılaştırılır", () => {
     1650,
     IBAN,
   );
+  assert.doesNotMatch(s.aciklama, /IBAN/);
+});
+
+test("dekontta IBAN okunamadıysa kontrol atlanır", () => {
+  const s = eslestir(okuma({ alici_iban: null }), 1650, IBAN);
+  assert.equal(s.eslesme, "matched");
   assert.doesNotMatch(s.aciklama, /IBAN/);
 });
 

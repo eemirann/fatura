@@ -18,6 +18,7 @@ export type DekontGorunum = {
   okunan_iban: string | null;
   okunan_gonderen: string | null;
   okunan_banka: string | null;
+  okunan_referans_no: string | null;
   aciklama: string | null;
   dosya_adi: string | null;
   mime: string;
@@ -51,6 +52,14 @@ const ESLESME_STIL: Record<ReceiptEslesme, { etiket: string; sinif: string }> = 
   tarih_uyusmadi: {
     etiket: "Tarih uyuşmadı",
     sinif: "border-orange-300 bg-orange-50 text-orange-800",
+  },
+  iban_uyusmadi: {
+    etiket: "IBAN uyuşmadı",
+    sinif: "border-red-300 bg-red-50 text-red-800",
+  },
+  tekrar_kullanilmis: {
+    etiket: "Dekont tekrar kullanılmış",
+    sinif: "border-red-300 bg-red-50 text-red-800",
   },
   unreadable: {
     etiket: "Okunamadı",
@@ -237,6 +246,9 @@ function DekontSatiri({
           <Alan etiket="Gönderen" deger={dekont.okunan_gonderen ?? "—"} />
           {dekont.okunan_banka && <Alan etiket="Banka" deger={dekont.okunan_banka} />}
           {dekont.okunan_iban && <Alan etiket="Alıcı IBAN" deger={dekont.okunan_iban} />}
+          {dekont.okunan_referans_no && (
+            <Alan etiket="Referans No" deger={dekont.okunan_referans_no} />
+          )}
         </dl>
       )}
 
@@ -245,11 +257,13 @@ function DekontSatiri({
         (dekont.eslesme !== "matched" || dekont.aciklama.includes("Dikkat:")) && (
           <p
             className={`mt-2 rounded-lg px-3 py-2 text-sm ${
-              dekont.eslesme === "mismatch"
-                ? "bg-orange-50 text-orange-900"
-                : dekont.eslesme === "kismi"
-                  ? "bg-amber-50 text-amber-900"
-                  : "bg-slate-100 text-slate-700"
+              dekont.eslesme === "iban_uyusmadi" || dekont.eslesme === "tekrar_kullanilmis"
+                ? "bg-red-50 text-red-900"
+                : dekont.eslesme === "mismatch"
+                  ? "bg-orange-50 text-orange-900"
+                  : dekont.eslesme === "kismi"
+                    ? "bg-amber-50 text-amber-900"
+                    : "bg-slate-100 text-slate-700"
             }`}
           >
             {dekont.aciklama}

@@ -152,31 +152,60 @@ export async function POST(request: Request) {
     console.error("[ingest] dekont okunamadı:", e instanceof Error ? e.message : e);
   }
 
+  // Bankanın işlem/referans numarası — aynı dekontun (ya da aynı numaraya
+  // sahip başka bir dekontun) farklı bir fatura için tekrar yüklenmesini
+  // yakalamanın en güvenilir yolu. bkz. supabase/migrations/0009: tabloda
+  // ayrıca DB seviyesinde de UNIQUE olarak tutuluyor, bu sorgu yalnızca
+  // düzgün bir hata mesajı üretebilmek için önden bakıyor.
+  const referansNo = okuma?.referans_no?.trim() || null;
+
   let eslesmeSonucu: EslesmeSonucu;
   if (okuma) {
-    const [{ data: ayarlar }, { data: oncekiDekontlar }] = await Promise.all([
-      admin.from("settings").select("iban").single(),
-      admin
-        .from("receipts")
-        .select("eslesme, okunan_tutar")
-        .eq("invoice_id", fatura.id)
-        .in("eslesme", ["matched", "kismi"]),
-    ]);
-    // Paylaşımlı dairelerde birden fazla kişi ayrı ayrı gönderebilir — bu ana
-    // kadar sayılmış tutarlar toplanıp yeni dekont bu toplama eklenir. Bu okuma
-    // ile aşağıdaki insert arasında eşzamanlı bir yükleme gelirse iki dekont da
-    // "kismi" kalabilir; bunu telafi etmek için insert sonrası tekrar toplanır
-    // (bkz. "mutabakat" bloğu).
-    const oncekiOdenenTutar = toplananTutar(
-      (oncekiDekontlar ?? []).map((r) => ({ ...r, okunan_tutar: Number(r.okunan_tutar ?? 0) })),
-    );
-    eslesmeSonucu = eslestir(
-      okuma,
-      beklenenTutar,
-      ayarlar?.iban ?? "",
-      oncekiOdenenTutar,
-      fatura.donem,
-    );
+    const tekrarKullanim = referansNo
+      ? (
+          await admin
+            .from("receipts")
+            .select("invoice_id")
+            .eq("okunan_referans_no", referansNo)
+            .limit(1)
+            .maybeSingle()
+        ).data
+      : null;
+
+    if (tekrarKullanim) {
+      eslesmeSonucu = {
+        eslesme: "tekrar_kullanilmis",
+        yeniDurum: null,
+        aciklama:
+          tekrarKullanim.invoice_id === fatura.id
+            ? "Bu dekont (aynı işlem numarasıyla) bu faturaya daha önce yüklenmiş. Fatura durumu değişmedi."
+            : "Bu dekontun işlem numarası başka bir fatura için daha önce kullanılmış. Fatura otomatik kapatılmadı; kontrol edin.",
+      };
+    } else {
+      const [{ data: ayarlar }, { data: oncekiDekontlar }] = await Promise.all([
+        admin.from("settings").select("iban").single(),
+        admin
+          .from("receipts")
+          .select("eslesme, okunan_tutar")
+          .eq("invoice_id", fatura.id)
+          .in("eslesme", ["matched", "kismi"]),
+      ]);
+      // Paylaşımlı dairelerde birden fazla kişi ayrı ayrı gönderebilir — bu ana
+      // kadar sayılmış tutarlar toplanıp yeni dekont bu toplama eklenir. Bu okuma
+      // ile aşağıdaki insert arasında eşzamanlı bir yükleme gelirse iki dekont da
+      // "kismi" kalabilir; bunu telafi etmek için insert sonrası tekrar toplanır
+      // (bkz. "mutabakat" bloğu).
+      const oncekiOdenenTutar = toplananTutar(
+        (oncekiDekontlar ?? []).map((r) => ({ ...r, okunan_tutar: Number(r.okunan_tutar ?? 0) })),
+      );
+      eslesmeSonucu = eslestir(
+        okuma,
+        beklenenTutar,
+        ayarlar?.iban ?? "",
+        oncekiOdenenTutar,
+        fatura.donem,
+      );
+    }
   } else {
     eslesmeSonucu = {
       eslesme: "unreadable",
@@ -200,6 +229,7 @@ export async function POST(request: Request) {
     okunan_alici: okuma?.alici_ad ?? null,
     okunan_gonderen: okuma?.gonderen_ad ?? null,
     okunan_banka: okuma?.banka ?? null,
+    okunan_referans_no: referansNo,
     aciklama: eslesmeSonucu.aciklama,
     ham_json: okuma,
   });

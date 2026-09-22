@@ -161,6 +161,54 @@ GONDEREN_ETIKETLERI = [
 # (ör. "Adı Soyadı/Unvan") iki kez art arda geçer — sırasıyla gönderen, alıcı.
 GENEL_ISIM_ETIKETLERI = ["adı soyadı", "ad soyad", "unvan"]
 
+# Bankanın işleme verdiği tekil numara. Öncelik sırası önemli: birden çok
+# numara türü aynı dekontta geçebilir ("Referans Numarası" hem "Sorgu
+# Numarası" hem de "e-Dekont Belge No" birlikte bulunabilir) — en standart ve
+# en kalıcı olan (Referans No/İşlem No) önce denenir, aksi hâlde ilk bulunan
+# (yalnızca ETTN gibi ilgisiz alanları toplayan) numara kazanabilir.
+REFERANS_ETIKETLERI = [
+    "referans numarası", "referans no",
+    "işlem no", "islem no",
+    "dekont no",
+    "e-dekont belge no", "belge no",
+    "fiş no", "fis no",
+    "sorgu numarası", "sorgu no",
+]
+# Rakam/harf karışık, ayraçlı (/, ., -) tekil numaralar için: en az 5 karakter
+# (kısa sayılar yanlış pozitif riski taşır), en çok 40.
+REFERANS_DEGER_DESENI = re.compile(r"[A-Za-z0-9][A-Za-z0-9/.\-]{4,39}")
+
+
+def _referans_no_bul(metin: str) -> Optional[str]:
+    """Bankanın işlem/referans numarasını bulur — aynı dekontun farklı bir
+    fatura için tekrar yüklenmesini yakalamanın en güvenilir yolu (bkz.
+    app/api/ingest/route.ts'teki tekrar-kullanım kontrolü).
+
+    Emin olunamadığında None döner: yanlış bir numara, olmayan bir tekrar-
+    kullanımı "tespit edip" gerçek bir ödemeyi reddettirebilir — bu, hiç
+    kontrol etmemekten daha kötü bir hata.
+    """
+    satirlar = metin.split("\n")
+    for etiket in REFERANS_ETIKETLERI:
+        for i, satir in enumerate(satirlar):
+            alt = _kucult(satir)
+            konum = alt.find(_kucult(etiket))
+            if konum == -1:
+                continue
+
+            sonrasi = satir[konum + len(etiket) :].strip(" :-\t")
+            m = REFERANS_DEGER_DESENI.search(sonrasi)
+            if m:
+                return m.group(0)
+
+            if i + 1 < len(satirlar):
+                aday = satirlar[i + 1].strip(" :-\t")
+                m = REFERANS_DEGER_DESENI.search(aday)
+                if m:
+                    return m.group(0)
+    return None
+
+
 BILINEN_BANKALAR = [
     "Türkiye İş Bankası", "İş Bankası", "Garanti BBVA", "Garanti Bankası", "Akbank",
     "Yapı Kredi", "Ziraat Bankası", "Halkbank", "VakıfBank", "QNB Finansbank", "QNB",
@@ -344,6 +392,7 @@ def dekont_ayristir(metin: str) -> DekontSemasi:
         alici_ad=alici_ad,
         gonderen_ad=gonderen_ad,
         banka=_banka_bul(metin),
+        referans_no=_referans_no_bul(metin),
         aciklama=f"{tutar:.2f} {para_birimi} tutarında işlem tespit edildi (regex/OCR).",
         ham_metin=ham_metin,
     )

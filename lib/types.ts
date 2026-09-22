@@ -6,7 +6,11 @@ export type ReceiptEslesme =
   | "unreadable"
   | "kismi"
   /** Tarihi fatura döneminden önceye ait; tutar tutsa bile fatura kapanmaz. */
-  | "tarih_uyusmadi";
+  | "tarih_uyusmadi"
+  /** Alıcı IBAN'ı ayarlardaki IBAN'la uyuşmuyor; başka bir hesaba ödenmiş olabilir. */
+  | "iban_uyusmadi"
+  /** Bu dekontun referans numarası daha önce başka bir dekontta kullanılmış. */
+  | "tekrar_kullanilmis";
 
 export type Settings = {
   id: boolean;
@@ -83,6 +87,8 @@ export type Receipt = {
   okunan_alici: string | null;
   okunan_gonderen: string | null;
   okunan_banka: string | null;
+  /** Bankanın işlem/referans/fiş numarası — tekrar kullanım tespiti için. */
+  okunan_referans_no: string | null;
   aciklama: string | null;
   ham_json: unknown;
   created_at: string;

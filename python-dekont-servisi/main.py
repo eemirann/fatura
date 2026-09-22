@@ -27,6 +27,7 @@ class DekontYanit(BaseModel):
     alici_ad: str | None
     gonderen_ad: str | None
     banka: str | None
+    referans_no: str | None
     aciklama: str
     ham_metin: str | None = None
 

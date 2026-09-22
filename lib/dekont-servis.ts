@@ -11,6 +11,8 @@ export const DekontSemasi = z.object({
   alici_ad: z.string().nullable(),
   gonderen_ad: z.string().nullable(),
   banka: z.string().nullable(),
+  /** Bankanın işlem/referans numarası — tekrar kullanım tespiti için. */
+  referans_no: z.string().nullable().optional(),
   aciklama: z.string(),
   /**
    * Dosyadan çıkarılan düz metin. Okuma başarısız olduğunda deseni

@@ -248,6 +248,7 @@ export default async function DairePage({
               okunan_iban: d.okunan_iban,
               okunan_gonderen: d.okunan_gonderen,
               okunan_banka: d.okunan_banka,
+              okunan_referans_no: d.okunan_referans_no,
               aciklama: d.aciklama,
               dosya_adi: d.dosya_adi,
               mime: d.mime,
