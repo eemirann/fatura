@@ -48,9 +48,10 @@ altındaki dosyaları **numara sırasıyla** yapıştırıp çalıştır:
 | `0004_kullanici_rolleri.sql` | `profiles` tablosu, yönetici/görüntüleyici rolleri, rol bazlı RLS |
 | `0005_otomatik_hatirlatma.sql` | Otomatik hatırlatma için `son_hatirlatma_at` kolonu |
 | `0006_denetim_kaydi.sql` | `audit_log` — finansal işlemlerde "kim, ne zaman" kaydı |
+| `0007_giderler.sql` | `expenses` — apartman giderleri ve kasa bakiyesi |
 
-> Sadece `0001`'i çalıştırmak yetmez — kısmi ödeme, roller, hatırlatma ve
-> denetim kaydı sessizce çalışmaz hâle gelir.
+> Sadece `0001`'i çalıştırmak yetmez — kısmi ödeme, roller, hatırlatma,
+> denetim kaydı ve gider takibi sessizce çalışmaz hâle gelir.
 
 **Kendine kullanıcı aç:** **Authentication → Users → Add user** → e-posta ve şifre
 gir, *Auto Confirm User* seçeneğini işaretle. Panele bu bilgilerle gireceksin.
@@ -381,7 +382,7 @@ lib/csv.ts          CSV alan kaçışı (formül enjeksiyonu dahil) — saf, tes
 components/panel-sekmeleri.tsx  Panelin Ödeyenler/Ödemeyenler/Faturasız sekmeleri
 app/api/export/csv/ Fatura dökümünün CSV indirmesi
 app/api/cron/hatirlat/  Vadesi geçmiş faturalara günlük otomatik hatırlatma
-supabase/migrations/  0001–0006, sırayla çalıştırılır
+supabase/migrations/  0001–0007, sırayla çalıştırılır
 ```
 
 ### Eşleştirme kuralı

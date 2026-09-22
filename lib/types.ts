@@ -2,6 +2,36 @@ export type InvoiceDurum = "taslak" | "gonderildi" | "odendi" | "uyusmadi";
 export type ReceiptKaynak = "kiraci_link" | "panel" | "api";
 export type ReceiptEslesme = "matched" | "mismatch" | "unreadable" | "kismi";
 
+/** Gider kategorileri — veritabanındaki check kısıtıyla birebir aynı sırada. */
+export const GIDER_KATEGORILERI = [
+  "personel",
+  "elektrik",
+  "su",
+  "dogalgaz",
+  "yakit",
+  "bakim",
+  "temizlik",
+  "tamirat",
+  "vergi",
+  "diger",
+] as const;
+
+export type GiderKategorisi = (typeof GIDER_KATEGORILERI)[number];
+
+/** Kategorilerin arayüzde görünen adları. */
+export const GIDER_KATEGORI_ADI: Record<GiderKategorisi, string> = {
+  personel: "Personel (kapıcı, görevli)",
+  elektrik: "Elektrik",
+  su: "Su",
+  dogalgaz: "Doğalgaz",
+  yakit: "Yakıt",
+  bakim: "Bakım (asansör, kombi)",
+  temizlik: "Temizlik",
+  tamirat: "Tamirat",
+  vergi: "Vergi ve resmî ödeme",
+  diger: "Diğer",
+};
+
 export type Settings = {
   id: boolean;
   iban: string;
@@ -73,6 +103,18 @@ export type Receipt = {
   aciklama: string | null;
   ham_json: unknown;
   created_at: string;
+};
+
+/** Apartman gideri (bkz. supabase/migrations/0007_giderler.sql). */
+export type Expense = {
+  id: string;
+  tarih: string;
+  baslik: string;
+  tutar: number;
+  kategori: GiderKategorisi;
+  aciklama: string | null;
+  created_at: string;
+  created_by: string | null;
 };
 
 /** Panelde bir daireyi tek kart olarak çizmek için gereken birleşik veri. */
