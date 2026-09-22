@@ -32,7 +32,7 @@ from google import genai
 from sema import DekontSemasi
 
 GOOGLE_AI_API_KEY = os.environ.get("GOOGLE_AI_API_KEY")
-GOOGLE_AI_MODEL = os.environ.get("GOOGLE_AI_MODEL", "gemini-2.5-flash")
+GOOGLE_AI_MODEL = os.environ.get("GOOGLE_AI_MODEL", "gemini-3.6-flash")
 
 # app/api/ingest/route.ts'deki 55 sn'lik toplam bütçeyi (AbortSignal.timeout)
 # tek başına tüketmesin diye açık bir üst sınır. İkili koruma: hem create()'in
