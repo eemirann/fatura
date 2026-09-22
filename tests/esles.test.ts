@@ -154,6 +154,69 @@ test("ayarlarda IBAN yoksa uyarı üretilmez", () => {
   assert.doesNotMatch(s.aciklama, /IBAN/);
 });
 
+// -------------------------------------------------------------- ad eşleştirme
+//
+// Bilerek gevşek: yalnızca ortak hiçbir kelime (ör. soyad) yoksa uyarı
+// eklenir, hiçbir zaman bloklamaz. Kirada aile üyelerinin birbiri adına
+// ödeme yapması yaygın bir meşru senaryo.
+
+test("gönderen adı kiracıyla tamamen ilgisizse uyarı eklenir", () => {
+  const s = eslestir(
+    okuma({ gonderen_ad: "Mehmet Yılmaz" }),
+    1650,
+    IBAN,
+    0,
+    undefined,
+    "Ayşe Erbaş",
+  );
+  assert.equal(s.eslesme, "matched");
+  assert.match(s.aciklama, /gönderen adı/i);
+});
+
+test("ortak soyadlı aile ödemesi uyarı üretmez", () => {
+  // Emirhan Erbaş, Ayşe Erbaş'ın kirasını kendi hesabından ödüyor.
+  const s = eslestir(
+    okuma({ gonderen_ad: "Emirhan Erbaş" }),
+    1650,
+    IBAN,
+    0,
+    undefined,
+    "Ayşe Erbaş",
+  );
+  assert.equal(s.eslesme, "matched");
+  assert.doesNotMatch(s.aciklama, /gönderen adı/i);
+});
+
+test("büyük/küçük harf ve Türkçe karakter farkı yanlış uyarı üretmez", () => {
+  const s = eslestir(
+    okuma({ gonderen_ad: "AYŞE ERBAŞ" }),
+    1650,
+    IBAN,
+    0,
+    undefined,
+    "ayşe erbaş",
+  );
+  assert.doesNotMatch(s.aciklama, /gönderen adı/i);
+});
+
+test("kiracı adı verilmezse ad kontrolü atlanır", () => {
+  const s = eslestir(okuma({ gonderen_ad: "Mehmet Yılmaz" }), 1650, IBAN);
+  assert.equal(s.eslesme, "matched");
+  assert.doesNotMatch(s.aciklama, /gönderen adı/i);
+});
+
+test("gönderen adı okunamadıysa ad kontrolü atlanır", () => {
+  const s = eslestir(
+    okuma({ gonderen_ad: null }),
+    1650,
+    IBAN,
+    0,
+    undefined,
+    "Ayşe Erbaş",
+  );
+  assert.doesNotMatch(s.aciklama, /gönderen adı/i);
+});
+
 // ---------------------------------------------------- dekont tarihi kontrolü
 //
 // Bildirilen hata: eski tarihli bir dekont, yalnızca tutarı denk geldiği için

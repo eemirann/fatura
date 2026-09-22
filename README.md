@@ -51,6 +51,7 @@ altındaki dosyaları **numara sırasıyla** yapıştırıp çalıştır:
 | `0007_dekont_tarih_kontrolu.sql` | `tarih_uyusmadi` eşleşme durumu — eski tarihli dekont faturayı kapatmasın |
 | `0008_borc_devri.sql` | `devredildi_at` — ödenmemiş borcun sonraki aya taşınması |
 | `0009_iban_ve_referans_no.sql` | `iban_uyusmadi` / `tekrar_kullanilmis` eşleşme durumları, `okunan_referans_no` + tekillik indeksi |
+| `0010_dekont_tekrar_tespiti.sql` | `dosya_sha256` (birebir dosya) + `okunan_gorsel_hash` (dHash, bulanık) ile tekrar-kullanım tespiti |
 
 > Sadece `0001`'i çalıştırmak yetmez — kısmi ödeme, roller, hatırlatma ve
 > denetim kaydı ve dekont tarih kontrolü sessizce çalışmaz hâle gelir.
@@ -384,7 +385,7 @@ lib/csv.ts          CSV alan kaçışı (formül enjeksiyonu dahil) — saf, tes
 components/panel-sekmeleri.tsx  Panelin Ödeyenler/Ödemeyenler/Faturasız sekmeleri
 app/api/export/csv/ Fatura dökümünün CSV indirmesi
 app/api/cron/hatirlat/  Vadesi geçmiş faturalara günlük otomatik hatırlatma
-supabase/migrations/  0001–0009, sırayla çalıştırılır
+supabase/migrations/  0001–0010, sırayla çalıştırılır
 ```
 
 ### Eşleştirme kuralı

@@ -1,3 +1,4 @@
+from dekont_gorsel import gorsel_hash_hesapla
 from dekont_regex import dekont_ayristir, metin_cikar
 from sema import DekontSemasi
 
@@ -31,4 +32,9 @@ async def dekont_oku(icerik: bytes, mime: str) -> DekontSemasi:
             aciklama=f"Metin/OCR okuma başarısız oldu: {e}",
         )
 
-    return dekont_ayristir(metin)
+    sonuc = dekont_ayristir(metin)
+    # Görsel hash metinden bağımsız: OCR metni boş/başarısız olsa bile (ör.
+    # taranmış ama tanınamayan bir görsel) tekrar-kullanım tespiti için yine
+    # de hesaplanmaya değer. Hata durumunda sessizce None kalır.
+    sonuc.gorsel_hash = gorsel_hash_hesapla(icerik, mime)
+    return sonuc

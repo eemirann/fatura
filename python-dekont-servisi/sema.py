@@ -40,6 +40,14 @@ class DekontSemasi(BaseModel):
             "tekrar kullanılıp kullanılmadığını denetlemek için. Emin olunamıyorsa null."
         ),
     )
+    gorsel_hash: Optional[str] = Field(
+        default=None,
+        description=(
+            "Dekont görselinin dHash imzası (64 bit, hex). Kırpılmış/yeniden "
+            "sıkıştırılmış ama görsel olarak aynı dekontun tekrar kullanılmasını "
+            "yakalamak için. Görsel işlenemediyse null."
+        ),
+    )
     aciklama: str = Field(
         description=(
             "okunabilir=false ise nedenini tek cümleyle Türkçe yaz. "

@@ -28,6 +28,7 @@ class DekontYanit(BaseModel):
     gonderen_ad: str | None
     banka: str | None
     referans_no: str | None
+    gorsel_hash: str | None
     aciklama: str
     ham_metin: str | None = None
 

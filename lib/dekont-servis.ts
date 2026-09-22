@@ -13,6 +13,9 @@ export const DekontSemasi = z.object({
   banka: z.string().nullable(),
   /** Bankanın işlem/referans numarası — tekrar kullanım tespiti için. */
   referans_no: z.string().nullable().optional(),
+  /** Görselin dHash imzası (64 bit, hex) — kırpılmış/yeniden sıkıştırılmış
+   *  ama görsel olarak aynı dekontun tekrar kullanılmasını yakalamak için. */
+  gorsel_hash: z.string().nullable().optional(),
   aciklama: z.string(),
   /**
    * Dosyadan çıkarılan düz metin. Okuma başarısız olduğunda deseni

@@ -89,6 +89,10 @@ export type Receipt = {
   okunan_banka: string | null;
   /** Bankanın işlem/referans/fiş numarası — tekrar kullanım tespiti için. */
   okunan_referans_no: string | null;
+  /** Yüklenen dosyanın SHA-256'sı — birebir aynı dosyanın tekrar yüklenmesini yakalar. */
+  dosya_sha256: string | null;
+  /** Görselin dHash imzası — kırpılmış/yeniden sıkıştırılmış ama aynı dekontu yakalar. */
+  okunan_gorsel_hash: string | null;
   aciklama: string | null;
   ham_json: unknown;
   created_at: string;

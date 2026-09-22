@@ -82,6 +82,53 @@ function ibanChecksumGecerliMi(iban: string): boolean {
   }
 }
 
+function turkceKucult(metin: string): string {
+  return metin
+    .replace(/[İIı]/g, "i")
+    .replace(/[Şş]/g, "s")
+    .replace(/[Ğğ]/g, "g")
+    .replace(/[Üü]/g, "u")
+    .replace(/[Öö]/g, "o")
+    .replace(/[Çç]/g, "c")
+    .toLowerCase()
+    .trim();
+}
+
+/** Gürültü sayılabilecek kısa ek/bağlaç benzeri kelimeleri ("bey", "hanım"
+ *  gibi) elemek için: 3 karakterden kısa token'lar örtüşme sayılmaz. */
+function isimTokenlari(isim: string): Set<string> {
+  return new Set(
+    turkceKucult(isim)
+      .split(/\s+/)
+      .filter((t) => t.length >= 3),
+  );
+}
+
+/**
+ * Gönderen adı, kayıtlı kiracı adıyla HİÇ örtüşmüyor mu?
+ *
+ * Bilerek gevşek: tam isim benzerliği yerine yalnızca ortak kelime (ör.
+ * soyad) arar. Kirada aile üyelerinin birbiri adına ödeme yapması çok
+ * yaygın (eş, çocuk, ebeveyn farklı hesaptan gönderebilir) — sıkı bir isim
+ * eşleştirmesi bu meşru durumları sürekli şüpheli işaretleyip uyarı
+ * körlüğü yaratırdı. Yalnızca ortak hiçbir kelime yoksa (muhtemelen
+ * tamamen ilgisiz biri) bir not düşülür; Türkiye'de gerçek zamanlı ücretsiz
+ * IBAN→ad doğrulaması olmadığı için bu asla tek başına red sebebi olamaz.
+ */
+function isimTamamenIlgisizMi(
+  gonderenAdi: string | null | undefined,
+  kiraciAdi: string | null | undefined,
+): boolean {
+  if (!gonderenAdi?.trim() || !kiraciAdi?.trim()) return false;
+  const gonderen = isimTokenlari(gonderenAdi);
+  const kiraci = isimTokenlari(kiraciAdi);
+  if (gonderen.size === 0 || kiraci.size === 0) return false;
+  for (const token of gonderen) {
+    if (kiraci.has(token)) return false;
+  }
+  return true;
+}
+
 /**
  * Dekont okumasını beklenen tutarla karşılaştırıp faturanın yeni durumunu
  * belirler. Saf fonksiyon — veritabanına dokunmaz, böylece kuralı tek başına
@@ -132,6 +179,7 @@ export function eslestir(
   ayarlardakiIban: string,
   oncekiOdenenTutar = 0,
   faturaDonemi?: string,
+  kiraciAdi?: string | null,
 ): EslesmeSonucu {
   if (!okuma.okunabilir || okuma.tutar === null) {
     return {
@@ -177,6 +225,14 @@ export function eslestir(
     }
     uyarilar.push(
       `Dikkat: okunan IBAN geçersiz biçimli (…${okunanIban.slice(-4)}), OCR hatası olabilir.`,
+    );
+  }
+
+  // Ad kontrolü de tıpkı IBAN'ın geçersiz-checksum dalı gibi yalnızca bir
+  // not düşer, asla bloklamaz — bkz. isimTamamenIlgisizMi.
+  if (isimTamamenIlgisizMi(okuma.gonderen_ad, kiraciAdi)) {
+    uyarilar.push(
+      `Dikkat: gönderen adı ("${okuma.gonderen_ad}") kayıtlı kiracı adıyla ("${kiraciAdi}") örtüşmüyor.`,
     );
   }
 

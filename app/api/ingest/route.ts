@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/supabase/admin";
 import { getUser } from "@/lib/supabase/server";
@@ -9,6 +10,7 @@ import {
   type DesteklenenMime,
 } from "@/lib/dekont-servis.ts";
 import { eslestir, toplananTutar, TOLERANS, type EslesmeSonucu } from "@/lib/esles.ts";
+import { hammingMesafesi, GORSEL_HASH_ESIK } from "@/lib/gorsel-hash.ts";
 import { rateLimitIzniVar, istekIpAdresi } from "@/lib/rate-limit";
 import type { ReceiptKaynak } from "@/lib/types";
 
@@ -92,7 +94,7 @@ export async function POST(request: Request) {
   let kaynak: ReceiptKaynak;
   const sorgu = admin
     .from("invoices")
-    .select("id, unit_id, toplam, durum, donem")
+    .select("id, unit_id, toplam, durum, donem, units(kiraci_adi)")
     .limit(1);
 
   if (token) {
@@ -130,6 +132,9 @@ export async function POST(request: Request) {
 
   // ------------------------------------------------------------- dosyayı sakla
   const icerik = Buffer.from(await dosya.arrayBuffer());
+  // Birebir aynı dosyanın tekrar yüklenmesini yakalamak için — OCR'dan
+  // bağımsız, dosya bozuk/okunamaz olsa bile hesaplanabilir.
+  const dosyaSha256 = createHash("sha256").update(icerik).digest("hex");
   const dosyaYolu = `${fatura.id}/${Date.now()}-${crypto.randomUUID()}.${UZANTI[mime]}`;
 
   const { error: yuklemeHatasi } = await admin.storage
@@ -152,60 +157,89 @@ export async function POST(request: Request) {
     console.error("[ingest] dekont okunamadı:", e instanceof Error ? e.message : e);
   }
 
-  // Bankanın işlem/referans numarası — aynı dekontun (ya da aynı numaraya
-  // sahip başka bir dekontun) farklı bir fatura için tekrar yüklenmesini
-  // yakalamanın en güvenilir yolu. bkz. supabase/migrations/0009: tabloda
-  // ayrıca DB seviyesinde de UNIQUE olarak tutuluyor, bu sorgu yalnızca
-  // düzgün bir hata mesajı üretebilmek için önden bakıyor.
+  // ---------------------------------------------------- tekrar kullanım tespiti
+  // Üç katman, en güvenilirden en gevşeğe: bankanın kendi referans numarası
+  // (varsa kesin kanıt) -> birebir aynı dosya (SHA-256) -> görsel olarak aynı
+  // ama kırpılmış/yeniden sıkıştırılmış dosya (dHash, bulanık karşılaştırma).
+  // OCR tamamen başarısız olsa bile (okuma=null) dosya SHA-256'sı yine de
+  // hesaplanabildiği için bu kontrol okuma'dan bağımsız çalışır.
   const referansNo = okuma?.referans_no?.trim() || null;
+  const gorselHash = okuma?.gorsel_hash?.trim() || null;
+
+  let tekrarKullanim: { invoice_id: string } | null = null;
+
+  if (referansNo) {
+    tekrarKullanim = (
+      await admin
+        .from("receipts")
+        .select("invoice_id")
+        .eq("okunan_referans_no", referansNo)
+        .limit(1)
+        .maybeSingle()
+    ).data;
+  }
+
+  if (!tekrarKullanim) {
+    tekrarKullanim = (
+      await admin
+        .from("receipts")
+        .select("invoice_id")
+        .eq("dosya_sha256", dosyaSha256)
+        .limit(1)
+        .maybeSingle()
+    ).data;
+  }
+
+  if (!tekrarKullanim && gorselHash) {
+    const { data: adaylar } = await admin
+      .from("receipts")
+      .select("invoice_id, okunan_gorsel_hash")
+      .not("okunan_gorsel_hash", "is", null);
+
+    for (const aday of adaylar ?? []) {
+      const mesafe = hammingMesafesi(gorselHash, aday.okunan_gorsel_hash);
+      if (mesafe !== null && mesafe <= GORSEL_HASH_ESIK) {
+        tekrarKullanim = { invoice_id: aday.invoice_id };
+        break;
+      }
+    }
+  }
 
   let eslesmeSonucu: EslesmeSonucu;
-  if (okuma) {
-    const tekrarKullanim = referansNo
-      ? (
-          await admin
-            .from("receipts")
-            .select("invoice_id")
-            .eq("okunan_referans_no", referansNo)
-            .limit(1)
-            .maybeSingle()
-        ).data
-      : null;
-
-    if (tekrarKullanim) {
-      eslesmeSonucu = {
-        eslesme: "tekrar_kullanilmis",
-        yeniDurum: null,
-        aciklama:
-          tekrarKullanim.invoice_id === fatura.id
-            ? "Bu dekont (aynı işlem numarasıyla) bu faturaya daha önce yüklenmiş. Fatura durumu değişmedi."
-            : "Bu dekontun işlem numarası başka bir fatura için daha önce kullanılmış. Fatura otomatik kapatılmadı; kontrol edin.",
-      };
-    } else {
-      const [{ data: ayarlar }, { data: oncekiDekontlar }] = await Promise.all([
-        admin.from("settings").select("iban").single(),
-        admin
-          .from("receipts")
-          .select("eslesme, okunan_tutar")
-          .eq("invoice_id", fatura.id)
-          .in("eslesme", ["matched", "kismi"]),
-      ]);
-      // Paylaşımlı dairelerde birden fazla kişi ayrı ayrı gönderebilir — bu ana
-      // kadar sayılmış tutarlar toplanıp yeni dekont bu toplama eklenir. Bu okuma
-      // ile aşağıdaki insert arasında eşzamanlı bir yükleme gelirse iki dekont da
-      // "kismi" kalabilir; bunu telafi etmek için insert sonrası tekrar toplanır
-      // (bkz. "mutabakat" bloğu).
-      const oncekiOdenenTutar = toplananTutar(
-        (oncekiDekontlar ?? []).map((r) => ({ ...r, okunan_tutar: Number(r.okunan_tutar ?? 0) })),
-      );
-      eslesmeSonucu = eslestir(
-        okuma,
-        beklenenTutar,
-        ayarlar?.iban ?? "",
-        oncekiOdenenTutar,
-        fatura.donem,
-      );
-    }
+  if (tekrarKullanim) {
+    eslesmeSonucu = {
+      eslesme: "tekrar_kullanilmis",
+      yeniDurum: null,
+      aciklama:
+        tekrarKullanim.invoice_id === fatura.id
+          ? "Bu dekont bu faturaya daha önce yüklenmiş. Fatura durumu değişmedi."
+          : "Bu dekont (ya da görsel olarak aynısı) başka bir fatura için daha önce kullanılmış. Fatura otomatik kapatılmadı; kontrol edin.",
+    };
+  } else if (okuma) {
+    const [{ data: ayarlar }, { data: oncekiDekontlar }] = await Promise.all([
+      admin.from("settings").select("iban").single(),
+      admin
+        .from("receipts")
+        .select("eslesme, okunan_tutar")
+        .eq("invoice_id", fatura.id)
+        .in("eslesme", ["matched", "kismi"]),
+    ]);
+    // Paylaşımlı dairelerde birden fazla kişi ayrı ayrı gönderebilir — bu ana
+    // kadar sayılmış tutarlar toplanıp yeni dekont bu toplama eklenir. Bu okuma
+    // ile aşağıdaki insert arasında eşzamanlı bir yükleme gelirse iki dekont da
+    // "kismi" kalabilir; bunu telafi etmek için insert sonrası tekrar toplanır
+    // (bkz. "mutabakat" bloğu).
+    const oncekiOdenenTutar = toplananTutar(
+      (oncekiDekontlar ?? []).map((r) => ({ ...r, okunan_tutar: Number(r.okunan_tutar ?? 0) })),
+    );
+    eslesmeSonucu = eslestir(
+      okuma,
+      beklenenTutar,
+      ayarlar?.iban ?? "",
+      oncekiOdenenTutar,
+      fatura.donem,
+      kiraciAdiCikar(fatura.units),
+    );
   } else {
     eslesmeSonucu = {
       eslesme: "unreadable",
@@ -229,7 +263,14 @@ export async function POST(request: Request) {
     okunan_alici: okuma?.alici_ad ?? null,
     okunan_gonderen: okuma?.gonderen_ad ?? null,
     okunan_banka: okuma?.banka ?? null,
-    okunan_referans_no: referansNo,
+    // Tekrar kullanım zaten tespit edildiyse bu değerleri BU satıra
+    // yazmıyoruz: referans_no ve dosya_sha256 tabloda UNIQUE — aynı değeri
+    // taşıyan bir satır zaten var, ikinci kez yazmak kısıt ihlaline (ve
+    // "Dekont kaydedilemedi" hatasına) yol açardı. Orijinal satırdaki değer
+    // gelecekteki karşılaştırmalar için zaten yeterli.
+    okunan_referans_no: tekrarKullanim ? null : referansNo,
+    dosya_sha256: tekrarKullanim ? null : dosyaSha256,
+    okunan_gorsel_hash: gorselHash,
     aciklama: eslesmeSonucu.aciklama,
     ham_json: okuma,
   });
@@ -288,6 +329,17 @@ export async function POST(request: Request) {
     beklenen_tutar: beklenenTutar,
     aciklama: eslesmeSonucu.aciklama,
   });
+}
+
+/**
+ * `invoices` sorgusundaki `units(kiraci_adi)` join'i, Supabase'in şema
+ * çıkarımına göre bazen tek nesne bazen dizi olarak tiplendiriliyor — ikisini
+ * de kabul eder.
+ */
+function kiraciAdiCikar(units: unknown): string | null {
+  const satir = Array.isArray(units) ? units[0] : units;
+  const ad = (satir as { kiraci_adi?: string | null } | null | undefined)?.kiraci_adi;
+  return ad ?? null;
 }
 
 /** Model bazen "15.08.2026" gibi biçim döndürebilir; sadece ISO kabul edilir. */
