@@ -4,7 +4,10 @@ from pydantic import BaseModel, Field
 
 
 class DekontSemasi(BaseModel):
-    """Claude'un dekonttan çıkaracağı alanlar (lib/dekont-oku.ts ile aynı sözleşme)."""
+    """Dekonttan çıkarılacak alanlar — hem regex/OCR (dekont_regex.py, birincil
+    yol) hem opsiyonel Gemini fallback'i (dekont_gemini.py, regex okuyamazsa
+    devreye girer) aynı sözleşmeye doldurur. lib/dekont-servis.ts ile aynı
+    şema."""
 
     okunabilir: bool = Field(
         description="Bu dosya bir para transferi dekontu/makbuzu mu ve tutarı net okunabiliyor mu?",

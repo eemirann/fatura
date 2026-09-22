@@ -23,7 +23,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py dekont_oku.py dekont_regex.py dekont_gorsel.py sema.py ./
+COPY main.py dekont_oku.py dekont_regex.py dekont_gorsel.py dekont_gemini.py sema.py ./
 
 # Root olarak çalıştırmıyoruz — servis internete açık bir portta duracak.
 RUN useradd --create-home --shell /usr/sbin/nologin dekont \

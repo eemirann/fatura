@@ -72,6 +72,12 @@ services:
       # Zorunlu: tanımlı değilse servis hiçbir istek kabul etmez (fail-closed).
       # Paneldeki DEKONT_SERVICE_KEY ile birebir aynı değer olmalı.
       DEKONT_SERVICE_KEY: ${DEKONT_SERVICE_KEY:?DEKONT_SERVICE_KEY tanimlanmali}
+      # Opsiyonel: regex hicbir tutar/kanit bulamadiginda (okunabilir=false)
+      # bir kez denenen Gemini fallback'i icin (bkz. dekont_gemini.py). Bos
+      # birakilirsa servis eskisi gibi tamamen regex/OCR ile calisir, hicbir
+      # sey bozulmaz (:? YOK, zorunlu degil).
+      GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY:-}
+      GOOGLE_AI_MODEL: ${GOOGLE_AI_MODEL:-gemini-2.5-flash}
 
   panel:
     build:

@@ -86,9 +86,9 @@ hesaplar otomatik olarak yönetici sayılır.
 
 ### 2. Dekont okuma servisi (Python)
 
-Dekont okuma, AI kullanmadan (regex + OCR) ayrı bir FastAPI mikroservisinde
-çalışır — metni seçilebilir PDF'lerde doğrudan metinden, ekran görüntüsü/
-taranmış PDF'lerde Tesseract OCR ile okur:
+Dekont okuma, birincil olarak AI kullanmadan (regex + OCR) ayrı bir FastAPI
+mikroservisinde çalışır — metni seçilebilir PDF'lerde doğrudan metinden,
+ekran görüntüsü/taranmış PDF'lerde Tesseract OCR ile okur:
 
 ```bash
 cd python-dekont-servisi
@@ -114,6 +114,18 @@ herkese açık bırakmasın diye.
 Yerelde `npm run dev:full` Next.js'i ve bu servisi tek komutla başlatır;
 `.env.local`'deki `DEKONT_SERVICE_KEY`'i uvicorn'a kendisi taşır (anahtar boşsa
 uyarı verip durur).
+
+**Opsiyonel Gemini fallback'i.** `GOOGLE_AI_API_KEY` doldurulursa
+([Google AI Studio](https://aistudio.google.com/apikey)'dan alınan bir
+Gemini API anahtarı — Vertex AI/servis hesabı DEĞİL), regex hiçbir tutar/kanıt
+bulamadığı ("okunamadı") durumlarda dekont bir kez de Gemini'ye ("okunabilir"
+alanına bakılarak) sorulur (bkz. `dekont_gemini.py`). Anahtar boş bırakılırsa
+servis tamamen eskisi gibi regex/OCR-only çalışır, hiçbir şey bozulmaz. AI
+yalnızca okuma hatalarında devreye girer — IBAN uyuşmazlığı, tekrar kullanım,
+tarih/tutar uyuşmazlığı gibi durumlarda hiç çağrılmaz, çünkü oradaki sorun
+okuma değil, doğru okunmuş bir değerin kuralla çelişmesidir; AI'nin ürettiği
+sonuç da dahil her dekont aynı doğrulama zincirinden (IBAN, tarih, tekrar
+kullanım) geçer.
 
 ### 3. Ortam değişkenleri
 
@@ -317,7 +329,8 @@ değildir.
 | Kalem | Tutar |
 |---|---|
 | Supabase | Ücretsiz katman bu ölçekte fazlasıyla yeter |
-| Dekont okuma (regex + Tesseract OCR) | 0 ₺ — AI/API çağrısı yok |
+| Dekont okuma (regex + Tesseract OCR) | 0 ₺ — birincil yol AI/API çağrısı yapmaz |
+| Gemini fallback'i (opsiyonel) | Yalnızca regex "okunamadı" derse çağrılır — `GOOGLE_AI_API_KEY` boşsa 0 ₺ |
 | VPS (panel + WAHA + dekont + Caddy) | Müşteri başına tek sunucu; 2 vCPU / 4 GB yeterli |
 | Alan adı | Yılda bir kez, sertifika için gerekli |
 
@@ -325,11 +338,13 @@ WhatsApp otomasyonunu kullanmıyorsanız (`WAHA_URL` boş) VPS yine de gerekir:
 dekont okuma servisi Vercel'de çalışamıyor. Otomatik okumadan da vazgeçerseniz
 panel çalışmayı sürdürür — dekontlar kaydedilir, siz elle kontrol edersiniz.
 
-Dekont okuma AI kullanmadığı için isabeti Claude kadar yüksek olmayabilir,
-özellikle bilinmeyen/alışılmadık banka formatlarında. Uygulama bunu baştan
-beri ana güvenlik ağı olarak tasarlamış: okuma başarısız ya da şüpheliyse
-fatura durumu değişmez, panelde "elle kontrol edin" uyarısı çıkar — dosya
-hiçbir zaman kaybolmaz, siz elle bakıp onaylarsınız.
+Dekont okuma birincil olarak AI kullanmadığı için isabeti bir AI modeli kadar
+yüksek olmayabilir, özellikle bilinmeyen/alışılmadık banka formatlarında —
+`GOOGLE_AI_API_KEY` tanımlıysa bu durumlarda bir kez Gemini'ye de sorulur
+(yukarıdaki "Dekont okuma servisi" bölümü). Uygulama bunu baştan beri ana
+güvenlik ağı olarak tasarlamış: okuma (regex'in de, AI'nin de) başarısız ya
+da şüpheliyse fatura durumu değişmez, panelde "elle kontrol edin" uyarısı
+çıkar — dosya hiçbir zaman kaybolmaz, siz elle bakıp onaylarsınız.
 
 ---
 
