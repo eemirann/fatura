@@ -147,6 +147,16 @@ function SonucKutusu({ sonuc, yeniden }: { sonuc: Sonuc; yeniden: () => void }) 
           sonuc.beklenen_tutar,
         )}. Kalan tutar için ödemenizi tamamlayabilirsiniz.`,
     },
+    tarih_uyusmadi: {
+      sinif: "border-amber-200 bg-amber-50 text-amber-900",
+      baslik: "Dekontunuz alındı, ancak tarihi bu döneme ait görünmüyor.",
+      // Kiracıyı suçlayıcı bir dil kurmuyoruz: çoğu zaman yanlışlıkla eski
+      // bir dekont seçilmiş oluyor, ama gerçekten bu aya ait de olabilir.
+      metin:
+        "Dekonttaki ödeme tarihi bu faturanın döneminden önceye ait. Yanlış " +
+        "dosyayı seçmiş olabilirsiniz — doğru dekontu gönderirseniz hemen " +
+        "işlenir. Bu dekont doğruysa ev sahibiniz kontrol edip onaylayacak.",
+    },
     unreadable: {
       sinif: "border-slate-200 bg-slate-50 text-slate-800",
       baslik: "Dekontunuz alındı.",

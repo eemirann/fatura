@@ -1,6 +1,12 @@
 export type InvoiceDurum = "taslak" | "gonderildi" | "odendi" | "uyusmadi";
 export type ReceiptKaynak = "kiraci_link" | "panel" | "api";
-export type ReceiptEslesme = "matched" | "mismatch" | "unreadable" | "kismi";
+export type ReceiptEslesme =
+  | "matched"
+  | "mismatch"
+  | "unreadable"
+  | "kismi"
+  /** Tarihi fatura döneminden önceye ait; tutar tutsa bile fatura kapanmaz. */
+  | "tarih_uyusmadi";
 
 export type Settings = {
   id: boolean;

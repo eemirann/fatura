@@ -48,6 +48,10 @@ const ESLESME_STIL: Record<ReceiptEslesme, { etiket: string; sinif: string }> = 
     etiket: "Tutar uyuşmadı",
     sinif: "border-orange-300 bg-orange-50 text-orange-800",
   },
+  tarih_uyusmadi: {
+    etiket: "Tarih uyuşmadı",
+    sinif: "border-orange-300 bg-orange-50 text-orange-800",
+  },
   unreadable: {
     etiket: "Okunamadı",
     sinif: "border-slate-300 bg-slate-50 text-slate-700",

@@ -106,19 +106,27 @@ test("ayarlarda IBAN yoksa uyarı üretilmez", () => {
   assert.doesNotMatch(s.aciklama, /IBAN/);
 });
 
-test("dekont, fatura döneminden 60 günden fazla eskiyse uyarı eklenir", () => {
+// ---------------------------------------------------- dekont tarihi kontrolü
+//
+// Bildirilen hata: eski tarihli bir dekont, yalnızca tutarı denk geldiği için
+// faturayı "ödendi" yapıyordu. Tarih kontrolü vardı ama sadece açıklamaya bir
+// uyarı cümlesi ekliyordu; eşleşmeyi hiç durdurmuyordu.
+
+test("dönemden çok önceki tarihli dekont, tutar tutsa bile faturayı kapatmaz", () => {
   const s = eslestir(
-    okuma({ tarih: "2023-03-12" }),
+    okuma({ tarih: "2026-06-12" }),
     1650,
     IBAN,
     0,
     "2026-09-01",
   );
-  assert.equal(s.eslesme, "matched");
-  assert.match(s.aciklama, /eski/i);
+  assert.equal(s.eslesme, "tarih_uyusmadi");
+  assert.notEqual(s.yeniDurum, "odendi");
+  assert.match(s.aciklama, /tarihi/i);
 });
 
-test("dekont tarihi fatura dönemine yakınsa eski tarih uyarısı gelmez", () => {
+test("bir önceki ayın ortasına ait dekont da kabul edilmez", () => {
+  // Asıl sinsi durum: 60 günlük eski toleransta bu uyarı bile almıyordu.
   const s = eslestir(
     okuma({ tarih: "2026-08-15" }),
     1650,
@@ -126,20 +134,55 @@ test("dekont tarihi fatura dönemine yakınsa eski tarih uyarısı gelmez", () =
     0,
     "2026-09-01",
   );
-  assert.equal(s.eslesme, "matched");
-  assert.doesNotMatch(s.aciklama, /eski/i);
+  assert.equal(s.eslesme, "tarih_uyusmadi");
 });
 
-test("fatura dönemi verilmezse eski tarih kontrolü yapılmaz", () => {
+test("dönem başlamadan birkaç gün önce ödeyen kiracı kabul edilir", () => {
+  // Erken ödeme payı: 28 Ağustos'taki ödeme Eylül aidatı olabilir.
+  const s = eslestir(
+    okuma({ tarih: "2026-08-28" }),
+    1650,
+    IBAN,
+    0,
+    "2026-09-01",
+  );
+  assert.equal(s.eslesme, "matched");
+});
+
+test("geç tarihli dekont kabul edilir - eski borç sonradan ödenebilir", () => {
+  // Eylül'de yapılan ödeme pekâlâ Temmuz'un borcunu kapatıyor olabilir.
+  const s = eslestir(
+    okuma({ tarih: "2026-09-20" }),
+    1650,
+    IBAN,
+    0,
+    "2026-07-01",
+  );
+  assert.equal(s.eslesme, "matched");
+});
+
+test("fatura dönemi verilmezse tarih kontrolü yapılmaz", () => {
   const s = eslestir(okuma({ tarih: "2020-01-01" }), 1650, IBAN);
   assert.equal(s.eslesme, "matched");
-  assert.doesNotMatch(s.aciklama, /eski/i);
 });
 
-test("dekont tarihi okunamadıysa eski tarih uyarısı atlanır", () => {
+test("dekont tarihi okunamadıysa tarih kontrolü atlanır", () => {
+  // Tarihi okunamayan dekontu tarih yüzünden reddetmek, okunabilir tutarı da
+  // çöpe atardı; bu durumda eski davranış doğru.
   const s = eslestir(okuma({ tarih: null }), 1650, IBAN, 0, "2026-09-01");
   assert.equal(s.eslesme, "matched");
-  assert.doesNotMatch(s.aciklama, /eski/i);
+});
+
+test("tarihi uyuşmayan dekont toplanan tutara girmez", () => {
+  // Kısmi ödeme toplamını şişirmemeli, yoksa reddedilen dekont dolaylı yoldan
+  // faturayı kapatırdı.
+  assert.equal(
+    toplananTutar([
+      { eslesme: "matched", okunan_tutar: 500 },
+      { eslesme: "tarih_uyusmadi", okunan_tutar: 1000 },
+    ]),
+    500,
+  );
 });
 
 test("toplananTutar yalnızca matched ve kismi dekontları sayar", () => {

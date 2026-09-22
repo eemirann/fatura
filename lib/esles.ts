@@ -78,17 +78,31 @@ function ibanSonHane(iban: string | null | undefined, n = 4): string | null {
  *   toplam fazla         -> uyusmadi (turuncu)
  *   TL dışı para birimi  -> uyusmadi (tutarlar karşılaştırılamaz)
  */
-/** Dekont tarihi fatura döneminden bu kadar gün önceyse "eski tarihli" uyarısı verilir. */
-const ESKI_TARIH_TOLERANS_GUN = 60;
+/**
+ * Dekont, fatura döneminin başlangıcından bu kadar gün öncesine kadar kabul
+ * edilir. Erken ödeyen kiracı için pay: 28 Ağustos'ta yapılan ödeme Eylül
+ * aidatı olabilir.
+ */
+const ERKEN_TARIH_PAYI_GUN = 10;
 
-/** "2026-09-01" gibi bir dönem, dekont tarihinden en az bu kadar gün sonraysa eskidir. */
-function eskiTarihliMi(okunanTarih: string | null, faturaDonemi?: string): boolean {
+/**
+ * Dekont tarihi bu fatura dönemi için imkânsız denecek kadar erken mi?
+ *
+ * YALNIZCA erken tarih şüphelidir, geç tarih değil: Eylül'de yapılan bir
+ * ödeme pekâlâ Temmuz'un borcunu kapatıyor olabilir (bkz. borç devri). Ama
+ * dönem başlamadan haftalar önce yapılmış bir ödeme bu döneme ait olamaz —
+ * kiracı elindeki eski bir dekontu yüklemiş demektir.
+ */
+function tarihDonemeUymuyorMu(
+  okunanTarih: string | null,
+  faturaDonemi?: string,
+): boolean {
   if (!okunanTarih || !faturaDonemi) return false;
   const dekont = new Date(okunanTarih);
   const donem = new Date(faturaDonemi);
   if (Number.isNaN(dekont.getTime()) || Number.isNaN(donem.getTime())) return false;
-  const farkGun = (donem.getTime() - dekont.getTime()) / 86_400_000;
-  return farkGun > ESKI_TARIH_TOLERANS_GUN;
+  const gunFarki = (donem.getTime() - dekont.getTime()) / 86_400_000;
+  return gunFarki > ERKEN_TARIH_PAYI_GUN;
 }
 
 export function eslestir(
@@ -131,12 +145,23 @@ export function eslestir(
     );
   }
 
-  // Eşleşmeyi bloklamaz — yalnızca dikkat çeker. Kiracı elindeki eski/başka
-  // bir aya ait dekontu tekrar göndermiş olabilir.
-  if (eskiTarihliMi(okuma.tarih, faturaDonemi)) {
-    uyarilar.push(
-      `Dikkat: dekont tarihi (${okuma.tarih}) fatura döneminden çok eski görünüyor — eski/yanlış bir dekont olabilir.`,
-    );
+  // Tutar karşılaştırmasından ÖNCE: tarih tutmuyorsa tutarın tutması bir şey
+  // ifade etmiyor. Önceden burada yalnızca bir uyarı cümlesi ekleniyordu ve
+  // fatura yine "ödendi" oluyordu — kiracının elindeki eski bir dekont,
+  // tutarı denk geldiği için faturayı sessizce kapatabiliyordu.
+  //
+  // Dosya kaybolmuyor, panelde duruyor; yalnızca faturayı otomatik kapatmıyor.
+  // Yönetici bakıp gerçekten bu aya aitse "Elle ödendi işaretle" diyebilir.
+  if (tarihDonemeUymuyorMu(okuma.tarih, faturaDonemi)) {
+    return {
+      eslesme: "tarih_uyusmadi",
+      yeniDurum: "uyusmadi",
+      aciklama: [
+        `Dekont tarihi (${okuma.tarih}) bu fatura döneminden önceye ait — bu ödeme bu aya ait görünmüyor.`,
+        "Tutar tutsa bile fatura otomatik kapatılmadı; kontrol edip gerekirse elle ödendi işaretleyin.",
+        ...uyarilar,
+      ].join(" "),
+    };
   }
 
   if (Math.abs(fark) <= TOLERANS) {
