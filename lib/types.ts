@@ -57,6 +57,13 @@ export type Invoice = {
   incelendi_at: string | null;
   /** Otomatik hatırlatmanın en son gittiği an (bkz. app/api/cron/hatirlat). */
   son_hatirlatma_at: string | null;
+  /**
+   * Ödenmemiş kalanı sonraki bir aya devredildiyse dolu. Dolu olan fatura
+   * artık açık borç sayılmaz — borç hedef faturada durur (bkz. lib/borc.ts).
+   */
+  devredildi_at: string | null;
+  /** Borcun devredildiği dönem, "YYYY-MM-01". */
+  devredilen_donem: string | null;
   created_at: string;
   updated_at: string;
 };

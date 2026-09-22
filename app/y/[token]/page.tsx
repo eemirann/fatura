@@ -47,7 +47,8 @@ export default async function KiraciSayfasi({
     .from("invoices")
     .select("donem, toplam, durum, son_odeme_tarihi, receipts(eslesme, okunan_tutar)")
     .eq("unit_id", fatura.unit_id)
-    .in("durum", ["gonderildi", "uyusmadi"]);
+    .in("durum", ["gonderildi", "uyusmadi"])
+    .is("devredildi_at", null);
 
   const borc = borcOzeti(
     ((acikFaturalar ?? []) as unknown as {

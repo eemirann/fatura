@@ -86,7 +86,10 @@ export async function GET(request: Request) {
       .select(
         "id, unit_id, donem, toplam, durum, son_odeme_tarihi, son_hatirlatma_at, public_token, units(kapi_no, kiraci_adi, kiraci_telefon, blocks(ad)), invoice_items(baslik, tutar), receipts(eslesme, okunan_tutar)",
       )
-      .in("durum", ["gonderildi", "uyusmadi"]),
+      .in("durum", ["gonderildi", "uyusmadi"])
+      // Devredilen faturanin borcu hedef ayda; burada hatirlatilirsa ayni
+      // borc icin iki mesaj gider.
+      .is("devredildi_at", null),
   ]);
 
   if (error) return NextResponse.json({ hata: error.message }, { status: 500 });

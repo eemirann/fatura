@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import UstMenu from "@/components/ust-menu";
 import { ayarlariGetir, borcVerisi, daireDetayi } from "@/lib/veri";
+import { devredenBorc } from "@/lib/borc";
+import DevirButonu from "./devir-butonu";
 import { durumHesapla } from "@/lib/durum";
 import { donemAnahtari, donemEtiketi, isoGun, para, tarihTR } from "@/lib/format";
 import { dekontLinki, mesajOlustur, whatsappLinki } from "@/lib/whatsapp";
@@ -41,6 +43,7 @@ export default async function DairePage({
   const durum = durumHesapla(daire.invoice, bugun);
   const fatura = daire.invoice;
   const borc = borclar.get(id) ?? null;
+  const devreden = borc ? devredenBorc(borc, donem) : 0;
 
   // WhatsApp mesajı yalnızca kalemler girilmişse anlamlı.
   const mesaj =
@@ -155,6 +158,18 @@ export default async function DairePage({
                 </li>
               ))}
             </ul>
+
+            {/* Devir yalnızca seçili dönem ÖNCESİNDEN borç varsa anlamlı;
+                bu ayın kendi borcunu kendine taşımak diye bir şey yok. */}
+            {devreden > 0 && (
+              <DevirButonu
+                unitId={daire.id}
+                donem={donem}
+                devreden={devreden}
+                donemEtiketi={donemEtiketi(donem)}
+                saltOkunur={saltOkunur}
+              />
+            )}
           </section>
         )}
 

@@ -84,6 +84,8 @@ export async function POST(request: Request) {
     .select("id")
     .eq("unit_id", daire.id)
     .in("durum", ["gonderildi", "uyusmadi"])
+    // Kapanmis/devredilmis faturaya dekont baglanmasin.
+    .is("devredildi_at", null)
     .order("donem", { ascending: false })
     .limit(1)
     .maybeSingle();

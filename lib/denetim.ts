@@ -20,6 +20,7 @@ export type DenetimEylemi =
   | "toplu_kalem_uygulandi"
   | "blok_silindi"
   | "daire_silindi"
+  | "borc_devredildi"
   | "ayarlar_degistirildi"
   | "kullanici_davet_edildi";
 

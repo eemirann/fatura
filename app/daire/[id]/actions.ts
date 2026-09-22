@@ -3,9 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { yoneticiDegilse } from "@/lib/supabase/rol";
-import { sonOdemeTarihi } from "@/lib/format";
+import { donemEtiketi, sonOdemeTarihi } from "@/lib/format";
 import { faturaDurumunuTazele } from "@/lib/fatura-durum";
+import { faturaKalani } from "@/lib/borc";
 import { denetimYaz } from "@/lib/denetim";
+import type { ReceiptEslesme } from "@/lib/types";
 import { wahaAktifMi, wahaMesajGonder } from "@/lib/waha";
 
 export type ActionSonuc = { hata?: string; basari?: string };
@@ -244,6 +246,159 @@ export async function eldeOdendiIsaretle(
   revalidatePath(`/daire/${unitId}`);
   revalidatePath("/");
   return { basari: "Ödendi olarak işaretlendi." };
+}
+
+/**
+ * Devredilen bir dönemin hedef faturadaki kalem başlığı.
+ *
+ * Dışa açılmıyor: "use server" dosyasındaki her export bir sunucu action'ı
+ * sayılır ve async olmak zorundadır.
+ */
+function devirKalemBasligi(kaynakDonem: string): string {
+  return `Devir: ${donemEtiketi(kaynakDonem)}`;
+}
+
+/**
+ * Önceki dönemlerin ödenmemiş kalanını seçili döneme taşır.
+ *
+ * Neden elle: hangi daireyi ne zaman devredeceği yöneticinin kararı. Otomatik
+ * yapmak, kiracı ödemeyi yolda göndermişken faturayı şişirebilirdi.
+ *
+ * Neden kaynak fatura KAPANIYOR: aksi hâlde aynı borç iki yerde birden durur.
+ * Kiracı eski linkten ödediğinde hem eski fatura kapanır hem yenideki devir
+ * kalemi yerinde kalır; aynı para iki kez tahsil edilmiş görünür.
+ *
+ * Her kaynak dönem hedef faturada AYRI bir kalem olur ("Devir: Eylül 2026").
+ * Tek bir toplam kalem yerine böyle: kiracı hangi ayları taşıdığını görüyor ve
+ * ikinci bir devir önceki devrin üstüne yazma riski taşımıyor.
+ */
+export async function borcuDevret(
+  _prev: ActionSonuc,
+  fd: FormData,
+): Promise<ActionSonuc> {
+  const yetkisiz = await yoneticiDegilse();
+  if (yetkisiz) return yetkisiz;
+
+  const unitId = String(fd.get("unit_id") ?? "");
+  const hedefDonem = String(fd.get("donem") ?? "");
+  if (!GECERLI_DONEM.test(hedefDonem)) return { hata: "Geçersiz dönem." };
+
+  const supabase = await getServerSupabase();
+
+  const { data: hedef, error: hedefHatasi } = await supabase
+    .from("invoices")
+    .select("id, gonderildi_at")
+    .eq("unit_id", unitId)
+    .eq("donem", hedefDonem)
+    .maybeSingle();
+
+  if (hedefHatasi) return { hata: hedefHatasi.message };
+  if (!hedef) {
+    return {
+      hata: "Bu dönemin faturası yok. Önce kalemleri girip faturayı kaydedin.",
+    };
+  }
+
+  // Daha eski, hâlâ açık ve henüz devredilmemiş dönemler.
+  const { data: kaynaklar, error: kaynakHatasi } = await supabase
+    .from("invoices")
+    .select("id, donem, toplam, durum, son_odeme_tarihi, receipts(eslesme, okunan_tutar)")
+    .eq("unit_id", unitId)
+    .lt("donem", hedefDonem)
+    .in("durum", ["gonderildi", "uyusmadi"])
+    .is("devredildi_at", null)
+    .order("donem", { ascending: true });
+
+  if (kaynakHatasi) return { hata: kaynakHatasi.message };
+
+  const devredilecek = (kaynaklar ?? [])
+    .map((f) => {
+      const satir = f as unknown as {
+        id: string;
+        donem: string;
+        toplam: number | string;
+        durum: "gonderildi" | "uyusmadi";
+        son_odeme_tarihi: string;
+        receipts: { eslesme: ReceiptEslesme; okunan_tutar: number | null }[] | null;
+      };
+      return {
+        id: satir.id,
+        donem: satir.donem,
+        kalan: faturaKalani({
+          donem: satir.donem,
+          toplam: Number(satir.toplam ?? 0),
+          durum: satir.durum,
+          son_odeme_tarihi: satir.son_odeme_tarihi,
+          dekontlar: (satir.receipts ?? []).map((r) => ({
+            eslesme: r.eslesme,
+            okunan_tutar: r.okunan_tutar === null ? null : Number(r.okunan_tutar),
+          })),
+        }),
+      };
+    })
+    .filter((f) => f.kalan > 0);
+
+  if (devredilecek.length === 0) {
+    return { hata: "Önceki dönemlerden devredilecek ödenmemiş borç yok." };
+  }
+
+  // Yeni kalemler mevcutların ardına eklensin.
+  const { count } = await supabase
+    .from("invoice_items")
+    .select("id", { count: "exact", head: true })
+    .eq("invoice_id", hedef.id);
+
+  const { error: ekleHatasi } = await supabase.from("invoice_items").insert(
+    devredilecek.map((f, i) => ({
+      invoice_id: hedef.id,
+      baslik: devirKalemBasligi(f.donem),
+      tutar: f.kalan,
+      sira: (count ?? 0) + i,
+    })),
+  );
+  if (ekleHatasi) return { hata: ekleHatasi.message };
+
+  // Kaynakları kapat. Kalem eklendikten SONRA: bu adım patlarsa borç hedefte
+  // görünür (fazladan takip), tersi sırada ise tamamen kaybolurdu.
+  const { error: kapatmaHatasi } = await supabase
+    .from("invoices")
+    .update({
+      devredildi_at: new Date().toISOString(),
+      devredilen_donem: hedefDonem,
+    })
+    .in(
+      "id",
+      devredilecek.map((f) => f.id),
+    );
+  if (kapatmaHatasi) return { hata: kapatmaHatasi.message };
+
+  // Toplam değişti; hedefin durumu dekontlarına göre yeniden hesaplanmalı.
+  const durumHatasi = await faturaDurumunuTazele(
+    supabase,
+    hedef.id,
+    hedef.gonderildi_at,
+  );
+  if (durumHatasi) return { hata: durumHatasi };
+
+  const toplamDevir = devredilecek.reduce((t, f) => t + f.kalan, 0);
+
+  await denetimYaz({
+    eylem: "borc_devredildi",
+    hedefTur: "invoice",
+    hedefId: hedef.id,
+    detay: {
+      unit_id: unitId,
+      hedef_donem: hedefDonem,
+      toplam: toplamDevir,
+      kaynaklar: devredilecek.map((f) => ({ donem: f.donem, kalan: f.kalan })),
+    },
+  });
+
+  revalidatePath(`/daire/${unitId}`);
+  revalidatePath("/");
+  return {
+    basari: `${devredilecek.length} dönemden toplam ${toplamDevir.toFixed(2)} ₺ devredildi.`,
+  };
 }
 
 /** Yanlışlıkla ödendi işaretlenen faturayı geri alır. */

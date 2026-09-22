@@ -88,7 +88,9 @@ export async function borcVerisi(
   let sorgu = supabase
     .from("invoices")
     .select("unit_id, donem, toplam, durum, son_odeme_tarihi, receipts(eslesme, okunan_tutar)")
-    .in("durum", ["gonderildi", "uyusmadi"]);
+    .in("durum", ["gonderildi", "uyusmadi"])
+    // Devredilen fatura artik acik borc degil: kalani hedef faturaya tasindi.
+    .is("devredildi_at", null);
 
   if (unitId) sorgu = sorgu.eq("unit_id", unitId);
 

@@ -18,6 +18,45 @@ test("fatura yoksa gri", () => {
   assert.equal(durumHesapla(null, BUGUN).kod, "yok");
 });
 
+// ------------------------------------------------------------- borç devri
+
+test("devredilen fatura, vadesi geçmiş olsa bile kırmızı görünmez", () => {
+  // Asıl mesele bu: borç artık hedef ayda takip ediliyor. Kaynak fatura
+  // hâlâ "gonderildi" durumunda ve vadesi geçmiş olduğu için, damga
+  // dikkate alınmazsa panelde kırmızı durmaya devam ederdi.
+  const d = durumHesapla(
+    fatura({
+      son_odeme_tarihi: "2026-08-10",
+      devredildi_at: "2026-08-19T10:00:00Z",
+    }),
+    BUGUN,
+  );
+  assert.equal(d.kod, "devredildi");
+});
+
+test("devredilen fatura ödendi sayılmaz", () => {
+  // Para gelmedi; yalnızca alacağın takip edildiği yer değişti.
+  const d = durumHesapla(
+    fatura({ devredildi_at: "2026-08-19T10:00:00Z" }),
+    BUGUN,
+  );
+  assert.notEqual(d.kod, "odendi");
+  assert.equal(panelGrubu(d.kod), "faturasiz");
+});
+
+test("devredilen fatura ilgi bekleyenlere girmez", () => {
+  // Aksi hâlde aynı borç hem kaynak hem hedef ayda sayılırdı.
+  assert.equal(ilgilenmeliMi("devredildi"), false);
+});
+
+test("devir damgası yoksa davranış değişmez", () => {
+  const d = durumHesapla(
+    fatura({ son_odeme_tarihi: "2026-08-10", devredildi_at: null }),
+    BUGUN,
+  );
+  assert.equal(d.kod, "gecikti");
+});
+
 test("gönderilmemiş fatura taslak kalır, vadesi geçse bile kırmızı olmaz", () => {
   const d = durumHesapla(
     fatura({ durum: "taslak", son_odeme_tarihi: "2026-08-01" }),

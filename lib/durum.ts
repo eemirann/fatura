@@ -16,6 +16,7 @@ export type DurumKodu =
   | "bekliyor"             // gönderildi, vadesi var
   | "gecikti"              // gönderildi, vadesi geçti
   | "uyusmadi"             // dekont geldi ama tutar tutmadı
+  | "devredildi"           // kalanı sonraki aya taşındı, burada takip edilmez
   | "odendi_incelenmedi"   // otomatik eşleşti, sen henüz bakmadın
   | "odendi";              // eşleşti ve incelendi
 
@@ -61,6 +62,13 @@ const TABLO: Record<DurumKodu, Omit<DurumBilgisi, "kod">> = {
     nokta: "bg-orange-500",
     rozet: true,
   },
+  devredildi: {
+    etiket: "Sonraki aya devredildi",
+    // Nötr gri: ne ödendi ne de burada takip edilecek bir şey var.
+    kart: "bg-slate-50 border-slate-300 hover:border-slate-400",
+    nokta: "bg-slate-400",
+    rozet: false,
+  },
   odendi_incelenmedi: {
     etiket: "Ödendi — incelenmedi",
     kart: "bg-emerald-50 border-emerald-300 hover:border-emerald-400",
@@ -75,8 +83,14 @@ const TABLO: Record<DurumKodu, Omit<DurumBilgisi, "kod">> = {
   },
 };
 
+/** Durum hesabı için faturadan gereken alanlar. */
+type DurumGirdisi = Pick<
+  Invoice,
+  "durum" | "son_odeme_tarihi" | "incelendi_at"
+> & { devredildi_at?: string | null };
+
 export function durumHesapla(
-  invoice: Pick<Invoice, "durum" | "son_odeme_tarihi" | "incelendi_at"> | null | undefined,
+  invoice: DurumGirdisi | null | undefined,
   bugun: string = isoGun(),
 ): DurumBilgisi {
   const kod = durumKodu(invoice, bugun);
@@ -84,10 +98,15 @@ export function durumHesapla(
 }
 
 function durumKodu(
-  invoice: Pick<Invoice, "durum" | "son_odeme_tarihi" | "incelendi_at"> | null | undefined,
+  invoice: DurumGirdisi | null | undefined,
   bugun: string,
 ): DurumKodu {
   if (!invoice) return "yok";
+
+  // `durum`dan önce bakılır: devredilen bir fatura hâlâ "gonderildi"
+  // durumundadır ama artık burada takip edilmez, aksi hâlde borcu devredilmiş
+  // bir daire panelde kırmızı "vadesi geçti" olarak durmaya devam ederdi.
+  if (invoice.devredildi_at) return "devredildi";
 
   switch (invoice.durum) {
     case "taslak":
@@ -131,6 +150,11 @@ export function panelGrubu(kod: DurumKodu): PanelGrubu {
       return "odemeyen";
     case "yok":
     case "taslak":
+    // Devredilen fatura "ödemeyen"e giremez — borç artık hedef ayda takip
+    // ediliyor, burada listelemek aynı borcu iki sekmede göstermek olurdu.
+    // "Ödeyen" de değil, para gelmedi. Bu dönemde peşine düşülecek açık
+    // fatura kalmadığı için faturasız kovasında.
+    case "devredildi":
       return "faturasiz";
   }
 }
